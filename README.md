@@ -22,7 +22,7 @@ Your alarm triggers. Thirty seconds later, the drone is airborne, flying a prede
 
 ## How it works
 
-![System Architecture](docs/diagrams/system-overview.svg)
+<p align="center"><img src="https://raw.githubusercontent.com/acato/drone_hass/main/docs/diagrams/system-overview.svg" alt="System Architecture"></p>
 
 The add-on and integration communicate **exclusively via MQTT**. The bridge owns the drone. The integration owns the HA experience. The dock runs its own safety logic.
 

@@ -31,7 +31,7 @@
 
 ### 1.2 Trust Boundaries
 
-![Trust Boundaries](diagrams/trust-boundaries.svg)
+<p align="center"><img src="https://raw.githubusercontent.com/acato/drone_hass/main/docs/diagrams/trust-boundaries.svg" alt="Trust Boundaries"></p>
 
 ### 1.3 Data Flows Crossing Trust Boundaries
 

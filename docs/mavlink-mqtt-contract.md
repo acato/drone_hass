@@ -679,7 +679,7 @@ The bridge:
 
 ### 3.1 States
 
-![Drone Lifecycle State Machine](diagrams/drone-lifecycle.svg)
+<p align="center"><img src="https://raw.githubusercontent.com/acato/drone_hass/main/docs/diagrams/drone-lifecycle.svg" alt="Drone Lifecycle State Machine"></p>
 
 ### 3.2 Formal State Table
 
@@ -734,7 +734,7 @@ The bridge determines state by combining multiple MAVLink signals:
 
 ### 4.1 States
 
-![Mission State Machine](diagrams/mission-lifecycle.svg)
+<p align="center"><img src="https://raw.githubusercontent.com/acato/drone_hass/main/docs/diagrams/mission-lifecycle.svg" alt="Mission State Machine"></p>
 
 ### 4.2 Formal State Table
 
@@ -759,7 +759,7 @@ The bridge determines state by combining multiple MAVLink signals:
 
 The MAVLink mission upload handshake has its own internal states:
 
-![Upload Protocol State Machine](diagrams/upload-protocol.svg)
+<p align="center"><img src="https://raw.githubusercontent.com/acato/drone_hass/main/docs/diagrams/upload-protocol.svg" alt="Upload Protocol State Machine"></p>
 
 **Retry logic:** If a `MISSION_REQUEST_INT` is received for a seq that was already sent, the bridge resends that item (the FC did not receive it). Up to 3 retries per item.
 
@@ -817,7 +817,7 @@ Contacts with altitude separation > 150m (500ft) are always `none` regardless of
 
 Each tracked ADS-B contact has its own state:
 
-![DAA Per-Contact State Machine](diagrams/daa-states.svg)
+<p align="center"><img src="https://raw.githubusercontent.com/acato/drone_hass/main/docs/diagrams/daa-states.svg" alt="DAA Per-Contact State Machine"></p>
 
 ### 5.3 Global DAA State (Published to `state/daa`)
 
@@ -866,7 +866,7 @@ Every DAA event is written to the compliance recorder (Section 11.2 of architect
 
 ### 6.1 States
 
-![Connection/Heartbeat State Machine](diagrams/connection-states.svg)
+<p align="center"><img src="https://raw.githubusercontent.com/acato/drone_hass/main/docs/diagrams/connection-states.svg" alt="Connection/Heartbeat State Machine"></p>
 
 ### 6.2 Timing Parameters
 

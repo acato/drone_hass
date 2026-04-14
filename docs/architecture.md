@@ -188,7 +188,7 @@ These measures do not transfer legal responsibility from the operator but create
 
 ### 4.1 The Alarm Response Workflow
 
-![Alarm Response Workflow](diagrams/alarm-workflow.svg)
+<p align="center"><img src="https://raw.githubusercontent.com/acato/drone_hass/main/docs/diagrams/alarm-workflow.svg" alt="Alarm Response Workflow"></p>
 
 **Part 108 mode** follows the same flow, except the actionable notification is replaced by:
 - Autonomous launch after all safety gates pass
@@ -303,7 +303,7 @@ On the shed roof. Requirements:
 
 ### 5.7 Power Architecture
 
-![Power Architecture](diagrams/power-architecture.svg)
+<p align="center"><img src="https://raw.githubusercontent.com/acato/drone_hass/main/docs/diagrams/power-architecture.svg" alt="Power Architecture"></p>
 
 UPS is important: brownouts during storms are common — exactly when you want the system most.
 
@@ -529,7 +529,7 @@ The MQTT contract is the interface — the integration works identically regardl
 
 ### 8.2 High-Level Overview
 
-![System Architecture](diagrams/system-overview.svg)
+<p align="center"><img src="https://raw.githubusercontent.com/acato/drone_hass/main/docs/diagrams/system-overview.svg" alt="System Architecture"></p>
 
 ### 8.3 Bridge Add-on
 
@@ -938,7 +938,7 @@ The integration does not manage its own MQTT connection. It relies on HA's MQTT 
 
 ### 10.4 Config Flow
 
-![Config Flow](diagrams/config-flow.svg)
+<p align="center"><img src="https://raw.githubusercontent.com/acato/drone_hass/main/docs/diagrams/config-flow.svg" alt="Config Flow"></p>
 
 ### 10.5 Alarm-Triggered Automation
 
