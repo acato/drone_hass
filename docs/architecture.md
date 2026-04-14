@@ -938,31 +938,7 @@ The integration does not manage its own MQTT connection. It relies on HA's MQTT 
 
 ### 10.4 Config Flow
 
-```
-Step 1: Connection
-  ├── MQTT Broker Host (default: core-mosquitto)
-  ├── MQTT Port (default: 1883)
-  ├── MQTT Username / Password
-  └── Drone ID (auto-discovered from drone_hass/+/state/connection)
-
-Step 2: Media Server (optional)
-  ├── Media Server Type (go2rtc / mediamtx / none)
-  └── RTSP Source URL
-
-Step 3: Compliance
-  ├── Operational Mode (Part 107 / Part 108)
-  └── Operational Area definition (GeoJSON file path)
-
-Step 4: Legal Acknowledgment
-  └── User confirms: Part 107 certificate held, airspace verified,
-      Remote ID equipped, insurance obtained
-
-Step 5: Validation
-  ├── Test MQTT connection
-  ├── Check bridge heartbeat
-  ├── Verify DAA system status
-  └── Verify media server reachability (if configured)
-```
+![Config Flow](diagrams/config-flow.svg)
 
 ### 10.5 Alarm-Triggered Automation
 

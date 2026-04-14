@@ -11,7 +11,7 @@
       .s-label { font-weight: 600; font-size: 11px; text-anchor: middle; }
       .s-sub { font-size: 9px; fill: #616161; text-anchor: middle; }
       .edge { fill: none; stroke: #757575; stroke-width: 1.2; marker-end: url(#sm-arr); }
-      .edge-fail { stroke: #c62828; stroke-dasharray: 5 3; }
+      .edge-fail { fill: none; stroke: #c62828; stroke-dasharray: 5 3; }
       .e-label { font-size: 8px; fill: #424242; }
       .title { font-weight: 700; font-size: 14px; fill: #212121; }
     </style>

@@ -10,7 +10,7 @@
       .lbl { font-weight: 600; font-size: 10px; text-anchor: middle; }
       .slbl { font-size: 8px; fill: #616161; text-anchor: middle; }
       .ed { fill: none; stroke: #757575; stroke-width: 1.2; marker-end: url(#ma); }
-      .ed-err { stroke: #c62828; stroke-dasharray: 4 2; marker-end: url(#ma-r); }
+      .ed-err { fill: none; stroke: #c62828; stroke-dasharray: 4 2; marker-end: url(#ma-r); }
       .ed-lbl { font-size: 7.5px; fill: #616161; }
       .title { font-weight: 700; font-size: 14px; fill: #212121; }
     </style>

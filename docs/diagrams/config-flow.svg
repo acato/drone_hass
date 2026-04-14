@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" font-family="Inter, -apple-system, sans-serif" font-size="11">
+  <defs>
+    <style>
+      .step { rx: 8; ry: 8; stroke-width: 1.5; }
+      .s1 { fill: #e3f2fd; stroke: #1565c0; }
+      .s2 { fill: #fff3e0; stroke: #e65100; }
+      .s3 { fill: #f3e5f5; stroke: #6a1b9a; }
+      .s4 { fill: #ffebee; stroke: #c62828; }
+      .s5 { fill: #e8f5e9; stroke: #2e7d32; }
+      .lbl { font-weight: 700; font-size: 11px; }
+      .field { font-size: 10px; fill: #424242; }
+      .default { font-size: 9px; fill: #9e9e9e; font-style: italic; }
+      .num { font-weight: 700; font-size: 18px; fill: #fff; }
+      .num-bg { rx: 12; ry: 12; }
+      .ed { fill: none; stroke: #bdbdbd; stroke-width: 1.5; marker-end: url(#cf-arr); }
+      .title { font-weight: 700; font-size: 14px; fill: #212121; }
+    </style>
+    <marker id="cf-arr" markerWidth="6" markerHeight="4" refX="5" refY="2" orient="auto">
+      <polygon points="0 0,6 2,0 4" fill="#bdbdbd"/>
+    </marker>
+  </defs>
+
+  <text x="320" y="22" text-anchor="middle" class="title">HA Integration Config Flow</text>
+
+  <!-- Step 1: Connection -->
+  <rect class="num-bg" x="20" y="42" width="24" height="24" fill="#1565c0"/>
+  <text x="32" y="59" text-anchor="middle" class="num">1</text>
+  <rect class="step s1" x="54" y="38" width="260" height="80"/>
+  <text x="68" y="56" class="lbl" fill="#1565c0">Connection</text>
+  <text x="68" y="72" class="field">MQTT Broker Host</text><text x="210" y="72" class="default">core-mosquitto</text>
+  <text x="68" y="86" class="field">MQTT Port</text><text x="210" y="86" class="default">1883</text>
+  <text x="68" y="100" class="field">MQTT Username / Password</text>
+  <text x="68" y="114" class="field">Drone ID</text><text x="210" y="114" class="default">auto-discovered</text>
+
+  <!-- Arrow -->
+  <line x1="184" y1="118" x2="184" y2="136" class="ed"/>
+
+  <!-- Step 2: Media Server -->
+  <rect class="num-bg" x="20" y="140" width="24" height="24" fill="#e65100"/>
+  <text x="32" y="157" text-anchor="middle" class="num">2</text>
+  <rect class="step s2" x="54" y="136" width="260" height="56"/>
+  <text x="68" y="154" class="lbl" fill="#e65100">Media Server (optional)</text>
+  <text x="68" y="170" class="field">Type: go2rtc / mediamtx / none</text>
+  <text x="68" y="184" class="field">RTSP Source URL</text>
+
+  <line x1="184" y1="192" x2="184" y2="210" class="ed"/>
+
+  <!-- Step 3: Compliance -->
+  <rect class="num-bg" x="20" y="214" width="24" height="24" fill="#6a1b9a"/>
+  <text x="32" y="231" text-anchor="middle" class="num">3</text>
+  <rect class="step s3" x="54" y="210" width="260" height="56"/>
+  <text x="68" y="228" class="lbl" fill="#6a1b9a">Compliance</text>
+  <text x="68" y="244" class="field">Operational Mode: Part 107 / Part 108</text>
+  <text x="68" y="258" class="field">Operational Area: GeoJSON file path</text>
+
+  <line x1="184" y1="266" x2="184" y2="284" class="ed"/>
+
+  <!-- Step 4: Legal Acknowledgment -->
+  <rect class="num-bg" x="20" y="288" width="24" height="24" fill="#c62828"/>
+  <text x="32" y="305" text-anchor="middle" class="num">4</text>
+  <rect class="step s4" x="54" y="284" width="260" height="56"/>
+  <text x="68" y="302" class="lbl" fill="#c62828">Legal Acknowledgment</text>
+  <text x="68" y="318" class="field">Part 107 certificate held</text>
+  <text x="68" y="332" class="field">Airspace verified · Remote ID equipped</text>
+
+  <line x1="184" y1="340" x2="184" y2="358" class="ed"/>
+
+  <!-- Step 5: Validation -->
+  <rect class="num-bg" x="20" y="362" width="24" height="24" fill="#2e7d32"/>
+  <text x="32" y="379" text-anchor="middle" class="num">5</text>
+  <rect class="step s5" x="54" y="358" width="260" height="56"/>
+  <text x="68" y="376" class="lbl" fill="#2e7d32">Validation</text>
+  <text x="68" y="392" class="field">Test MQTT · Check bridge heartbeat</text>
+  <text x="68" y="406" class="field">Verify DAA status · Media server reachable</text>
+
+  <!-- Right side: what happens -->
+  <rect x="360" y="38" width="260" height="376" rx="8" fill="#fafafa" stroke="#e0e0e0" stroke-width="1"/>
+  <text x="490" y="58" text-anchor="middle" class="lbl" fill="#616161">What the integration does</text>
+
+  <text x="374" y="82" class="field" font-weight="600" fill="#1565c0">Step 1</text>
+  <text x="374" y="96" class="field">Subscribes to drone_hass/+/state/connection</text>
+  <text x="374" y="110" class="field">Auto-discovers available drone IDs</text>
+
+  <text x="374" y="140" class="field" font-weight="600" fill="#e65100">Step 2</text>
+  <text x="374" y="154" class="field">Configures camera entity source URL</text>
+  <text x="374" y="168" class="field">Skippable (no video = no camera entity)</text>
+
+  <text x="374" y="198" class="field" font-weight="600" fill="#6a1b9a">Step 3</text>
+  <text x="374" y="212" class="field">Sets ComplianceGate mode via MQTT command</text>
+  <text x="374" y="226" class="field">Loads operational area for dashboard map</text>
+
+  <text x="374" y="260" class="field" font-weight="600" fill="#c62828">Step 4</text>
+  <text x="374" y="274" class="field">Creates explicit record that operator was</text>
+  <text x="374" y="288" class="field">informed of regulatory requirements</text>
+
+  <text x="374" y="320" class="field" font-weight="600" fill="#2e7d32">Step 5</text>
+  <text x="374" y="334" class="field">Verifies broker responds on configured host</text>
+  <text x="374" y="348" class="field">Confirms bridge is online (heartbeat on MQTT)</text>
+  <text x="374" y="362" class="field">Checks DAA system reports healthy</text>
+  <text x="374" y="376" class="field">Pings media server if configured</text>
+  <text x="374" y="396" class="field">On success: creates device + all entities</text>
+</svg>
