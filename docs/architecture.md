@@ -1202,9 +1202,9 @@ CREATE INDEX idx_telemetry_flight ON telemetry_archive(flight_id);
 - **PDF report** — human-readable summary for a date range (flight count, hours, DAA encounters, anomalies). Attachment for Permit application narratives.
 - All exports include a chain verification summary: "Chain verified, N records, first/last timestamps, no gaps detected"
 
-**Blockchain-anchored timestamps (OpenTimestamps):** After each flight, the bridge hashes the compliance record and submits it to the OpenTimestamps network, which anchors the hash to a Bitcoin transaction. The `.ots` proof file is stored alongside the record. Anyone can verify the proof against any Bitcoin full node — independently, without the operator's cooperation, without any account, permanently.
+**Decentralized timestamps (OpenTimestamps):** After each flight, the bridge hashes the compliance record and submits it to the OpenTimestamps network. The `.ots` proof file is stored alongside the record. Anyone can independently verify the proof — without the operator's cooperation, without any account, permanently.
 
-This replaces RFC 3161 Timestamp Authorities as the external time-proof mechanism. Unlike a TSA (which can go offline or be compromised), the Bitcoin blockchain is effectively immutable and does not depend on any single entity's continued existence. Unlike S3 Object Lock (which can be destroyed by closing the AWS account), a blockchain anchor exists independently of any operator-controlled infrastructure.
+This replaces RFC 3161 Timestamp Authorities as the external time-proof mechanism. Unlike a TSA (which can go offline or be compromised), OpenTimestamps is decentralized and does not depend on any single entity's continued existence. Unlike S3 Object Lock (which can be destroyed by closing the AWS account), an OpenTimestamps anchor exists independently of any operator-controlled infrastructure.
 
 ```
 Flight completes
@@ -1212,16 +1212,16 @@ Flight completes
   → Litestream replicates to S3 (existing)
   → Bridge submits record hash to OpenTimestamps calendar servers
   → .ots proof stored in compliance DB (initially "pending")
-  → ~1-3 hours later: proof confirmed in a Bitcoin block
-  → Bridge updates proof to "confirmed" with block height
-  → Export includes .ots proofs — auditor verifies against any Bitcoin node
+  → ~1-3 hours later: proof confirmed (immutable)
+  → Bridge updates proof to "confirmed"
+  → Export includes .ots proofs — auditor verifies independently
 ```
 
-Cost: free. OpenTimestamps batches thousands of hashes into a single Bitcoin transaction. The bridge never makes a Bitcoin transaction itself. Dependency: `opentimestamps-client` Python package.
+Cost: free. OpenTimestamps batches thousands of hashes into single operations. Dependency: `opentimestamps-client` Python package.
 
-**Daily integrity heartbeat:** The recorder writes a heartbeat record once per day, even if no flights occur. The heartbeat hashes the chain head and submits it to OpenTimestamps. This proves the chain was intact at each heartbeat — not self-asserted by the bridge, but anchored to the Bitcoin blockchain.
+**Daily integrity heartbeat:** The recorder writes a heartbeat record once per day, even if no flights occur. The heartbeat hashes the chain head and submits it to OpenTimestamps. This proves the chain was intact at each heartbeat — not self-asserted by the bridge, but independently anchored.
 
-**Verification:** A standalone verification tool (Go binary, zero dependencies, cross-platform) takes a compliance database export and a public key as input and outputs a detailed PASS/FAIL report. The tool also verifies OpenTimestamps proofs against the Bitcoin blockchain. The public key is embedded in the export format so auditors need only the export file. A 2-page plain-language auditor guide documents: (a) run the verifier, (b) compare key fingerprint against operator's registered fingerprint, (c) verify OpenTimestamps proofs, (d) cross-reference flight records against FAA Remote ID database.
+**Verification:** A standalone verification tool (Go binary, zero dependencies, cross-platform) takes a compliance database export and a public key as input and outputs a detailed PASS/FAIL report. The tool also verifies OpenTimestamps proofs independently. The public key is embedded in the export format so auditors need only the export file. A 2-page plain-language auditor guide documents: (a) run the verifier, (b) compare key fingerprint against operator's registered fingerprint, (c) verify OpenTimestamps proofs, (d) cross-reference flight records against FAA Remote ID database.
 
 **Bridge startup self-checks:** On every startup, the bridge verifies its own deployment security:
 1. Attempts an unauthenticated MQTT connection — if it succeeds, drops to telemetry-only mode (no flight commands)
@@ -1239,7 +1239,7 @@ Five independent mechanisms, each proving a different property:
 |-----------|---------------|-----------------|
 | **Ed25519 signatures** | Who wrote the record | The bridge (operator's system) |
 | **SHA-256 hash chain** | No records were removed or altered | The bridge (operator's system) |
-| **OpenTimestamps (Bitcoin)** | When the record was written | The Bitcoin network (no one controls it) |
+| **OpenTimestamps** | When the record was written | Decentralized (no one controls it) |
 | **Litestream + S3** | Records exist off-device, queryable backup | Operator's cloud account (but S3 Object Lock prevents deletion) |
 | **FAA Remote ID** | The flight actually occurred | The FAA (operator cannot alter or delete) |
 
@@ -1247,11 +1247,11 @@ Together, these five layers answer every question a Part 108 reviewer or inciden
 
 - **"Who recorded this?"** — Ed25519 signature traces to a specific bridge instance with a registered key fingerprint.
 - **"Were any records deleted or altered?"** — The hash chain is intact (verifiable by the standalone tool).
-- **"When was this recorded?"** — The OpenTimestamps proof is anchored to a specific Bitcoin block with a known timestamp. This cannot be backdated or forged.
+- **"When was this recorded?"** — The OpenTimestamps proof is independently verifiable and immutable. This cannot be backdated or forged.
 - **"Where is the backup?"** — Litestream continuously replicates to S3 with Object Lock retention. Even if the local database is destroyed, the replica exists.
 - **"Did this flight actually happen?"** — FAA Remote ID independently recorded the aircraft's position broadcasts. Cross-reference the compliance record's GPS track against the FAA Remote ID database.
 
-**What this system cannot prove:** That the operator did not fabricate records using modified bridge code. A modified bridge could write false records with valid signatures and anchor them to the blockchain. This is the fundamental limitation of any self-hosted compliance system. The mitigation is Remote ID cross-referencing: fabricated flights have no corresponding Remote ID track. See `docs/threat-model.md` Section 12 for the complete integrity analysis.
+**What this system cannot prove:** That the operator did not fabricate records using modified bridge code. A modified bridge could write false records with valid signatures and timestamp them via OpenTimestamps. This is the fundamental limitation of any self-hosted compliance system. The mitigation is Remote ID cross-referencing: fabricated flights have no corresponding Remote ID track. See `docs/threat-model.md` Section 12 for the complete integrity analysis.
 
 **Record types:**
 

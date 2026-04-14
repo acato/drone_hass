@@ -2,7 +2,7 @@
 
 Commercial drone-in-a-box security systems cost $20,000-$100,000. drone_hass is the open-source alternative — alarm-triggered autonomous perimeter patrol, live video streaming, and FAA-compliant audit logging, built on Home Assistant, MAVLink, and ArduPilot.
 
-Your alarm triggers. Thirty seconds later, the drone is airborne, flying a predefined perimeter mission, streaming live video to your HA dashboard. When it lands, a signed compliance record is anchored to the Bitcoin blockchain via OpenTimestamps and replicated to immutable cloud storage — independently verifiable, permanently timestamped, ready for an FAA Part 108 Operating Permit review.
+Your alarm triggers. Thirty seconds later, the drone is airborne, flying a predefined perimeter mission, streaming live video to your HA dashboard. When it lands, a signed compliance record is timestamped via OpenTimestamps and replicated to immutable cloud storage — independently verifiable, permanently anchored, ready for an FAA Part 108 Operating Permit review.
 
 ## What this project is
 
@@ -15,7 +15,7 @@ Your alarm triggers. Thirty seconds later, the drone is airborne, flying a prede
   |-----------|---------------|-----------------|
   | **Ed25519 signatures** | Who wrote the record | The bridge instance |
   | **SHA-256 hash chain** | No records removed or altered | The bridge instance |
-  | **OpenTimestamps (Bitcoin)** | When the record was written | No one (Bitcoin network) |
+  | **OpenTimestamps** | When the record was written | No one (decentralized) |
   | **Litestream + S3 Object Lock** | Off-device backup exists | Operator's cloud (deletion-proof) |
   | **FAA Remote ID** | The flight actually occurred | The FAA (operator cannot alter) |
 

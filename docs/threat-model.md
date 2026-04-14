@@ -268,7 +268,7 @@
   1. Document the key storage model explicitly. If running on a Raspberry Pi or NUC, there may be no hardware key protection available. Acknowledge this limitation.
   2. Store the key with filesystem permissions `600` owned by the bridge process user, not readable by other add-ons or HA Core.
   3. Exclude the signing key from HA backups. The key should be backed up via a separate, manual process (e.g., printed QR code in a safe).
-  4. Implement key registration: on first install, the public key fingerprint is logged as the first compliance record. The operator should register this fingerprint with a trusted third party (e.g., email to their attorney, timestamp on a blockchain, notarized document) to establish the key's creation date.
+  4. Implement key registration: on first install, the public key fingerprint is logged as the first compliance record. The operator should register this fingerprint with a trusted third party (e.g., email to their attorney, OpenTimestamps proof, notarized document) to establish the key's creation date.
   5. Consider a key attestation service: the bridge periodically signs a challenge from an external timestamp authority (e.g., RFC 3161 TSA), proving the key was in use at a specific time. This makes it harder to forge a history retroactively.
   6. If the device has a TPM 2.0 (some NUCs do), use it to protect the signing key.
 
@@ -991,8 +991,8 @@ The resolution proposes an 11-layer integrity chain (Section 9.5). This is the m
   2. The heartbeat does not include any external, operator-uncontrollable data. It is self-referential -- the bridge proves to itself that the chain is intact. An operator who fabricated the chain also fabricated the heartbeats.
 - **Severity of the gap:** Low. The heartbeat is useful for detecting third-party tampering (someone else corrupts the database) but provides zero protection against operator fabrication.
 - **Suggested hardening:**
-  1. **Include external entropy in each heartbeat.** For example, include the most recent Bitcoin block hash (publicly verifiable, operator-uncontrollable timestamp anchor) or query an RFC 3161 Timestamp Authority. This proves the heartbeat was written after a specific real-world moment.
-  2. **Publish the heartbeat hash to an external, append-only ledger** (even something as simple as an email to a fixed address, or a tweet, or a blockchain transaction). This creates an off-system, operator-uncontrollable timestamp for the chain state.
+  1. **Include external entropy in each heartbeat.** For example, include the most recent OpenTimestamps anchor (publicly verifiable, operator-uncontrollable timestamp anchor) or query an RFC 3161 Timestamp Authority. This proves the heartbeat was written after a specific real-world moment.
+  2. **Publish the heartbeat hash to an external, append-only ledger** (even something as simple as an email to a fixed address, or a tweet, or an OpenTimestamps submission). This creates an off-system, operator-uncontrollable timestamp for the chain state.
 
 #### 10.1.7 Attack: SITL Detection Evasion
 
@@ -1172,7 +1172,7 @@ The following resolutions were pressure-tested and found to have no meaningful g
 | GAP-03 | Litestream replication gap exploitable by stopping Litestream before flight | Medium-High | ATK-COMP-02, Layer 6 | Bridge must monitor Litestream health continuously and block flights if replication stalls |
 | GAP-04 | Litestream + S3 Object Lock interaction untested (GC vs retention conflict) | Medium | ATK-COMP-02, R-07 | Requires empirical testing and documentation |
 | GAP-05 | AWS account closure destroys S3 Object Lock data after 90 days | Medium | ATK-COMP-02, Layer 7 | Replicate to operator-uncontrolled storage; Remote ID is the backstop |
-| GAP-06 | Daily heartbeat is self-referential; fabricated chain includes fabricated heartbeats | Low | Layer 5 | Include external entropy (RFC 3161 TSA, Bitcoin block hash) |
+| GAP-06 | Daily heartbeat is self-referential; fabricated chain includes fabricated heartbeats | Low | Layer 5 | Include external entropy (RFC 3161 TSA, OpenTimestamps anchor) |
 | GAP-07 | SITL detection defeatable by custom ArduPilot build with spoofed UID | Medium | ATK-COMP-04, Layer 9 | Remote ID cross-reference is the only reliable detection |
 | GAP-08 | MQTT ACL is a reference config, not enforced by software | High | ATK-MQTT-01 | Bridge should verify auth enforcement at startup |
 | GAP-09 | VLAN isolation is a deployment requirement, not enforced | High | R-03, ATK-LAT-02 | Bridge should detect and warn about flat-network deployment |
@@ -1241,7 +1241,7 @@ All 13 gaps reviewed by both domain experts. Consensus reached on all items.
 - Daily heartbeat hashes the chain head and submits it to an RFC 3161 Timestamp Authority (e.g., FreeTSA.org).
 - The signed timestamp token is stored as part of the heartbeat record.
 - This provides an external, cryptographically verifiable proof that the chain existed at a specific time.
-- No Bitcoin or blockchain dependency — RFC 3161 is standards-based and auditor-verifiable.
+- OpenTimestamps is decentralized and auditor-verifiable.
 
 ### GAP-07: SITL Detection Defeatable
 **Status: Adopted (document honestly).**
@@ -1304,7 +1304,7 @@ Five independent mechanisms, each proving a different property, each controlled 
 |-----------|---------------|-----------------|
 | **Ed25519 signatures** | Who wrote the record | The bridge (operator's system) |
 | **SHA-256 hash chain** | No records were removed or altered | The bridge (operator's system) |
-| **OpenTimestamps (Bitcoin)** | When the record was written | The Bitcoin network (no one controls it) |
+| **OpenTimestamps** | When the record was written | Decentralized (no one controls it) |
 | **Litestream + S3 Object Lock** | Records exist off-device, queryable backup | Operator's cloud account (deletion-proof during retention) |
 | **FAA Remote ID** | The flight actually occurred | The FAA (operator cannot alter or delete) |
 
@@ -1312,7 +1312,7 @@ Together, these answer every question a Part 108 reviewer or incident investigat
 
 - **"Who recorded this?"** — Ed25519 signature traces to a specific bridge instance with a registered key fingerprint.
 - **"Were any records deleted or altered?"** — The hash chain is intact (verifiable by the standalone tool).
-- **"When was this recorded?"** — The OpenTimestamps proof is anchored to a specific Bitcoin block. Cannot be backdated, forged, or deleted by any party.
+- **"When was this recorded?"** — The OpenTimestamps proof is independently verifiable and immutable. Cannot be backdated, forged, or deleted by any party.
 - **"Where is the backup?"** — Litestream continuously replicates to S3 with Object Lock retention.
 - **"Did this flight actually happen?"** — FAA Remote ID independently recorded the aircraft's position broadcasts.
 
@@ -1330,7 +1330,7 @@ Together, these answer every question a Part 108 reviewer or incident investigat
 | Reproducible builds with image digest logging | GAP-01/11: partial (supports, not primary) |
 | Bridge startup self-checks (MQTT auth, network, Litestream) | GAP-08/09: resolved |
 
-**What this system cannot prove:** That the operator did not fabricate records using modified bridge code. A modified bridge could write false records with valid signatures and anchor them to the blockchain. This is the fundamental limitation of any self-hosted compliance system. The mitigation is Remote ID cross-referencing: fabricated flights have no corresponding Remote ID track in the FAA database.
+**What this system cannot prove:** That the operator did not fabricate records using modified bridge code. A modified bridge could write false records with valid signatures and timestamp them via OpenTimestamps. This is the fundamental limitation of any self-hosted compliance system. The mitigation is Remote ID cross-referencing: fabricated flights have no corresponding Remote ID track in the FAA database.
 
 ---
 
