@@ -2,14 +2,24 @@
 
 Commercial drone-in-a-box security systems cost $20,000-$100,000. drone_hass is the open-source alternative — alarm-triggered autonomous perimeter patrol, live video streaming, and FAA-compliant audit logging, built on Home Assistant, MAVLink, and ArduPilot.
 
-Your alarm triggers. Thirty seconds later, the drone is airborne, flying a predefined perimeter mission, streaming live video to your HA dashboard. When it lands, a cryptographically signed compliance record is replicated off-device — ready for an FAA Part 108 Operating Permit review.
+Your alarm triggers. Thirty seconds later, the drone is airborne, flying a predefined perimeter mission, streaming live video to your HA dashboard. When it lands, a signed compliance record is anchored to the Bitcoin blockchain via OpenTimestamps and replicated to immutable cloud storage — independently verifiable, permanently timestamped, ready for an FAA Part 108 Operating Permit review.
 
 ## What this project is
 
 - **Alarm-to-airborne in under 30 seconds.** HA automation handles safety checks, dock opens, drone launches, video streams — fully autonomous under Part 108, or one-tap RPIC authorization under Part 107.
 - **Live RTSP video in your HA dashboard.** No proprietary app, no cloud subscription. Camera streams directly through go2rtc/mediamtx to a standard HA camera entity.
 - **Develop without hardware.** ArduPilot SITL simulates a full drone on your workstation. Build and test the entire system — bridge, HA integration, missions, compliance — before you touch a soldering iron.
-- **Part 108 compliance framework from day one.** Not bolted on later. Every flight produces a signed, hash-chained, off-device-replicated audit trail with independent FAA verification via Remote ID. The open-source Part 108 compliance tooling is the most novel contribution of this project.
+- **Part 108 compliance framework from day one.** Not bolted on later. Every flight produces a verifiable audit trail backed by five independent integrity mechanisms — each proving a different property, each controlled by a different entity:
+
+  | Mechanism | What it proves | Who controls it |
+  |-----------|---------------|-----------------|
+  | **Ed25519 signatures** | Who wrote the record | The bridge instance |
+  | **SHA-256 hash chain** | No records removed or altered | The bridge instance |
+  | **OpenTimestamps (Bitcoin)** | When the record was written | No one (Bitcoin network) |
+  | **Litestream + S3 Object Lock** | Off-device backup exists | Operator's cloud (deletion-proof) |
+  | **FAA Remote ID** | The flight actually occurred | The FAA (operator cannot alter) |
+
+  The open-source Part 108 compliance tooling is the most novel contribution of this project.
 - **MAVLink-native, aircraft-agnostic.** No proprietary SDKs, no vendor lock-in. Any MAVLink-compatible drone works. The MQTT abstraction means the HA integration never knows or cares what's flying.
 - **$4,500-$9,000 total system cost** vs $20,000-$100,000 for commercial alternatives (Skydio Dock, Sunflower Labs, Percepto).
 

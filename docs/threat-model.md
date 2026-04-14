@@ -1296,34 +1296,42 @@ All 13 gaps reviewed by both domain experts. Consensus reached on all items.
 
 ---
 
-## 12. Updated Compliance Data Integrity Chain
+## 12. Updated Compliance Data Integrity Model
 
-After gap resolutions, the complete integrity chain is:
+Five independent mechanisms, each proving a different property, each controlled by a different entity:
 
-| Layer | Control | Proves | Gap Status |
-|-------|---------|--------|------------|
-| 1 | Append-only SQLite (application enforcement) | Records not modified after creation | No gap |
-| 2 | SHA-256 hash chain | No records removed or altered mid-chain | No gap |
-| 3 | Ed25519 signatures per record | Records written by this specific bridge instance | GAP-01: accepted residual (operator can modify bridge code) |
-| 4 | Key fingerprint as record #1 + external registration | Key existed at install time | GAP-02: depends on Layer 7 (documented) |
-| 5 | Daily heartbeat with RFC 3161 timestamp | Chain was intact at each heartbeat; externally verifiable time proof | GAP-06: resolved (RFC 3161 TSA) |
-| 6 | Litestream continuous replication with health monitoring | Records exist off-device; flights blocked if replication stalls | GAP-03: resolved (continuous lag check) |
-| 7 | S3 Object Lock (COMPLIANCE mode, 5-year retention) | Records cannot be deleted during retention | GAP-05: accepted residual (account closure) |
-| 8 | Chain verification on startup + daily | Detects any tampering or corruption | No gap |
-| 9 | SITL detection (low-bar, not security boundary) | Simulation records flagged | GAP-07: accepted (Remote ID is primary) |
-| 10 | Remote ID correlation (FAA-controlled, operator-uncontrollable) | Flights actually occurred | THE primary verification mechanism |
-| 11 | Standalone verifier + auditor guide + export with embedded public key | Third party can independently verify | GAP-10: resolved |
-| 12 | Reproducible builds with image digest logging | Code integrity at runtime | GAP-01/11: partial (supports, not primary) |
-| 13 | Bridge startup self-checks (MQTT auth, network, Litestream) | Deployment configuration is sound | GAP-08/09: resolved |
+| Mechanism | What it proves | Who controls it |
+|-----------|---------------|-----------------|
+| **Ed25519 signatures** | Who wrote the record | The bridge (operator's system) |
+| **SHA-256 hash chain** | No records were removed or altered | The bridge (operator's system) |
+| **OpenTimestamps (Bitcoin)** | When the record was written | The Bitcoin network (no one controls it) |
+| **Litestream + S3 Object Lock** | Records exist off-device, queryable backup | Operator's cloud account (deletion-proof during retention) |
+| **FAA Remote ID** | The flight actually occurred | The FAA (operator cannot alter or delete) |
 
-**What this system proves to a Part 108 reviewer:**
-1. The system's safety posture during every flight (DAA active, weather checked, personnel authorized, geofence enforced) — via the signed, hash-chained, replicated compliance chain
-2. Flights actually occurred — via FAA Remote ID cross-referencing (external, operator-uncontrollable)
-3. The chain has not been tampered with — via the standalone verifier with RFC 3161 time proofs
-4. The system was running published code — via container image digest verification
+Together, these answer every question a Part 108 reviewer or incident investigator would ask:
 
-**What this system cannot prove:** That the operator did not fabricate records using modified bridge code. This is the fundamental limitation of self-hosted compliance and is documented rather than glossed over.
+- **"Who recorded this?"** — Ed25519 signature traces to a specific bridge instance with a registered key fingerprint.
+- **"Were any records deleted or altered?"** — The hash chain is intact (verifiable by the standalone tool).
+- **"When was this recorded?"** — The OpenTimestamps proof is anchored to a specific Bitcoin block. Cannot be backdated, forged, or deleted by any party.
+- **"Where is the backup?"** — Litestream continuously replicates to S3 with Object Lock retention.
+- **"Did this flight actually happen?"** — FAA Remote ID independently recorded the aircraft's position broadcasts.
+
+### Supporting layers (defense in depth)
+
+| Layer | Control | Gap Status |
+|-------|---------|------------|
+| Append-only SQLite (application enforcement) | No gap |
+| Key fingerprint as record #1 + external registration | GAP-02: depends on S3 Object Lock (documented) |
+| Daily heartbeat with OpenTimestamps anchor | GAP-06: resolved (replaces RFC 3161 TSA) |
+| Litestream health monitoring (block flights if stalls) | GAP-03: resolved |
+| Chain verification on startup + daily | No gap |
+| SITL detection (low-bar, not security boundary) | GAP-07: accepted (Remote ID is primary) |
+| Standalone verifier + auditor guide | GAP-10: resolved |
+| Reproducible builds with image digest logging | GAP-01/11: partial (supports, not primary) |
+| Bridge startup self-checks (MQTT auth, network, Litestream) | GAP-08/09: resolved |
+
+**What this system cannot prove:** That the operator did not fabricate records using modified bridge code. A modified bridge could write false records with valid signatures and anchor them to the blockchain. This is the fundamental limitation of any self-hosted compliance system. The mitigation is Remote ID cross-referencing: fabricated flights have no corresponding Remote ID track in the FAA database.
 
 ---
 
-*End of threat model, resolutions, red team validation, and gap resolutions. The compliance integrity chain is the most rigorous open-source UAS compliance framework documented to date. Its primary limitation is inherent to self-hosted systems, not to the architecture.*
+*End of threat model, resolutions, red team validation, and gap resolutions.*
