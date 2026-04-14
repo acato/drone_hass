@@ -40,14 +40,14 @@
   <text x="395" y="79" class="ed-lbl">5s no heartbeat</text>
 
   <!-- HEARTBEAT_LOST -> CONNECTED (resumes) -->
-  <path d="M 440 110 Q 400 140 370 110" class="ed"/>
+  <path fill="none" d="M 440 110 Q 400 140 370 110" class="ed"/>
   <text x="396" y="138" class="ed-lbl">heartbeat resumes (&lt;15s)</text>
 
   <!-- HEARTBEAT_LOST -> DISCONNECTED -->
-  <path d="M 440 115 Q 300 175 160 115" class="ed"/>
+  <path fill="none" d="M 440 115 Q 300 175 160 115" class="ed"/>
   <text x="290" y="170" class="ed-lbl">15s total no heartbeat</text>
 
   <!-- CONNECTED -> DISCONNECTED (error) -->
-  <path d="M 230 110 Q 180 140 160 110" class="ed"/>
+  <path fill="none" d="M 230 110 Q 180 140 160 110" class="ed"/>
   <text x="186" y="144" class="ed-lbl">MAVSDK error</text>
 </svg>

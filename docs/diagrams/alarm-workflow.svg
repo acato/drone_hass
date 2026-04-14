@@ -90,7 +90,7 @@
   <rect class="step compliance" x="10" y="442" width="160" height="28"/>
   <text x="90" y="461" class="lbl" fill="#546e7a">Log: rpic_authorized</text>
 
-  <path d="M 90 470 Q 90 490 220 490" class="ed"/>
+  <path fill="none" d="M 90 470 Q 90 490 220 490" class="ed"/>
 
   <!-- Part 108 branch -->
   <line x1="280" y1="290" x2="370" y2="290" class="ed"/>
@@ -115,7 +115,7 @@
 
   <line x1="370" y1="402" x2="370" y2="416" class="ed"/>
 
-  <path d="M 370 452 Q 370 490 220 490" class="ed"/>
+  <path fill="none" d="M 370 452 Q 370 490 220 490" class="ed"/>
 
   <!-- Converge: Launch -->
   <rect class="step action" x="100" y="498" width="240" height="34"/>

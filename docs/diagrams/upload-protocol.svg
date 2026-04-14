@@ -51,7 +51,7 @@
   <text x="290" y="160" class="ed-lbl">MISSION_ITEM_INT (seq=N)</text>
 
   <!-- Loop back to WAITING -->
-  <path d="M 60 155 Q 30 140 30 120 Q 30 108 60 108" class="ed"/>
+  <path fill="none" d="M 60 155 Q 30 140 30 120 Q 30 108 60 108" class="ed"/>
   <text x="14" y="132" class="ed-lbl">next</text>
 
   <!-- Arrow: FC sends ACK -->
@@ -73,10 +73,10 @@
   <rect class="st err" x="350" y="140" width="160" height="30"/>
   <text x="430" y="160" class="lbl" fill="#c62828">TIMEOUT</text>
 
-  <path d="M 220 120 Q 300 120 348 148" class="ed-err"/>
+  <path fill="none" d="M 220 120 Q 300 120 348 148" class="ed-err"/>
   <text x="270" y="140" class="ed-lbl" fill="#c62828">5s no request</text>
 
   <!-- Retry from timeout -->
-  <path d="M 350 155 Q 260 172 220 155" class="ed"/>
+  <path fill="none" d="M 350 155 Q 260 172 220 155" class="ed"/>
   <text x="274" y="176" class="ed-lbl">retry &lt;3</text>
 </svg>

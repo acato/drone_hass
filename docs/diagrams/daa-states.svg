@@ -75,21 +75,21 @@
   <text x="530" y="326" class="ed-lbl">RTL</text>
 
   <!-- Edges: de-escalation -->
-  <path d="M 558 254 Q 530 268 510 254 Q 475 240 450 218" class="ed-esc"/>
+  <path fill="none" d="M 558 254 Q 530 268 510 254 Q 475 240 450 218" class="ed-esc"/>
   <text x="506" y="272" class="ed-lbl" fill="#2e7d32">receding</text>
 
-  <path d="M 390 220 Q 370 190 370 164" class="ed-esc"/>
+  <path fill="none" d="M 390 220 Q 370 190 370 164" class="ed-esc"/>
   <text x="358" y="195" class="ed-lbl" fill="#2e7d32">receding</text>
 
-  <path d="M 360 142 Q 330 142 310 142" class="ed-esc"/>
+  <path fill="none" d="M 360 142 Q 330 142 310 142" class="ed-esc"/>
   <text x="325" y="158" class="ed-lbl" fill="#2e7d32">receding</text>
 
   <!-- Avoidance -> re-track -->
-  <path d="M 680 310 Q 710 280 680 264" class="ed-esc"/>
+  <path fill="none" d="M 680 310 Q 710 280 680 264" class="ed-esc"/>
   <text x="702" y="290" class="ed-lbl" fill="#2e7d32">clears</text>
 
   <!-- Timeout: TRACKING_NONE -> UNTRACKED -->
-  <path d="M 180 152 Q 150 170 130 164" class="ed"/>
+  <path fill="none" d="M 180 152 Q 150 170 130 164" class="ed"/>
   <text x="140" y="176" class="ed-lbl">60s timeout</text>
 
   <!-- Legend -->

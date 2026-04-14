@@ -78,20 +78,20 @@
   <text x="540" y="478" class="item">ArduPilot SITL (dev only)</text>
 
   <!-- Data flow arrows -->
-  <path d="M 200 264 L 200 284" class="flow"/>
+  <path fill="none" d="M 200 264 L 200 284" class="flow"/>
   <text x="208" y="278" class="flow-label">ESPHome API</text>
 
-  <path d="M 370 160 L 398 160" class="flow"/>
+  <path fill="none" d="M 370 160 L 398 160" class="flow"/>
   <text x="372" y="155" class="flow-label">MAVLink (signed)</text>
 
-  <path d="M 370 200 L 398 200" class="flow"/>
+  <path fill="none" d="M 370 200 L 398 200" class="flow"/>
   <text x="374" y="195" class="flow-label">RTSP video</text>
 
-  <path d="M 200 264 L 200 284" class="flow"/>
+  <path fill="none" d="M 200 264 L 200 284" class="flow"/>
 
-  <path d="M 575 264 L 575 284" class="flow"/>
+  <path fill="none" d="M 575 264 L 575 284" class="flow"/>
   <text x="583" y="278" class="flow-label">Push / UI</text>
 
-  <path d="M 200 406 L 200 422" class="flow"/>
+  <path fill="none" d="M 200 406 L 200 422" class="flow"/>
   <text x="208" y="418" class="flow-label">Litestream</text>
 </svg>

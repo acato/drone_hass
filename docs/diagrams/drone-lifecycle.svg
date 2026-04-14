@@ -105,7 +105,7 @@
   <text x="618" y="65" class="e-label">checks pass</text>
 
   <!-- PREFLIGHT_CHECKS -> CONNECTED_DISARMED (fail) -->
-  <path d="M 520 94 Q 520 120 400 120 Q 300 120 300 94" class="edge edge-fail" marker-end="url(#sm-arr-red)"/>
+  <path fill="none" d="M 520 94 Q 520 120 400 120 Q 300 120 300 94" class="edge edge-fail" marker-end="url(#sm-arr-red)"/>
   <text x="420" y="115" class="e-label" fill="#c62828">check failed</text>
 
   <!-- ARMING -> ARMED_GROUND -->
@@ -113,7 +113,7 @@
   <text x="728" y="125" class="e-label">ACK success</text>
 
   <!-- ARMING -> CONNECTED_DISARMED (denied) -->
-  <path d="M 660 82 Q 620 82 620 120 Q 620 140 380 94" class="edge edge-fail" marker-end="url(#sm-arr-red)"/>
+  <path fill="none" d="M 660 82 Q 620 82 620 120 Q 620 140 380 94" class="edge edge-fail" marker-end="url(#sm-arr-red)"/>
   <text x="600" y="130" class="e-label" fill="#c62828">denied</text>
 
   <!-- ARMED_GROUND -> TAKING_OFF -->
@@ -133,7 +133,7 @@
   <text x="508" y="350" class="e-label">RTL cmd</text>
 
   <!-- AIRBORNE_IDLE -> LANDING -->
-  <path d="M 540 294 Q 540 380 540 498" class="edge"/>
+  <path fill="none" d="M 540 294 Q 540 380 540 498" class="edge"/>
   <text x="548" y="380" class="e-label">land cmd</text>
 
   <!-- MISSION_EXECUTING -> MISSION_PAUSED -->
@@ -141,7 +141,7 @@
   <text x="155" y="265" class="e-label">pause</text>
 
   <!-- MISSION_PAUSED -> MISSION_EXECUTING -->
-  <path d="M 150 272 Q 166 290 180 280" class="edge"/>
+  <path fill="none" d="M 150 272 Q 166 290 180 280" class="edge"/>
   <text x="148" y="300" class="e-label">resume</text>
 
   <!-- MISSION_EXECUTING -> DAA_AVOIDANCE -->
@@ -149,11 +149,11 @@
   <text x="150" y="318" class="e-label" fill="#c62828">avoidance</text>
 
   <!-- DAA_AVOIDANCE -> MISSION_EXECUTING -->
-  <path d="M 170 360 Q 200 340 220 264" class="edge"/>
+  <path fill="none" d="M 170 360 Q 200 340 220 264" class="edge"/>
   <text x="200" y="330" class="e-label">clear</text>
 
   <!-- MISSION_EXECUTING -> RETURNING_HOME (complete) -->
-  <path d="M 265 294 Q 265 400 418 420" class="edge"/>
+  <path fill="none" d="M 265 294 Q 265 400 418 420" class="edge"/>
   <text x="290" y="380" class="e-label">mission complete</text>
 
   <!-- RETURNING_HOME -> LANDING -->
@@ -161,17 +161,17 @@
   <text x="508" y="475" class="e-label">near home</text>
 
   <!-- LANDING -> CONNECTED_DISARMED -->
-  <path d="M 420 530 Q 300 560 300 530 Q 300 130 300 96" class="edge"/>
+  <path fill="none" d="M 420 530 Q 300 560 300 530 Q 300 130 300 96" class="edge"/>
   <text x="310" y="560" class="e-label">disarmed</text>
 
   <!-- FAILSAFE (from any airborne) -->
-  <path d="M 265 294 Q 265 440 290 498" class="edge edge-fail" marker-end="url(#sm-arr-red)"/>
+  <path fill="none" d="M 265 294 Q 265 440 290 498" class="edge edge-fail" marker-end="url(#sm-arr-red)"/>
   <text x="250" y="440" class="e-label" fill="#c62828">failsafe</text>
 
   <!-- FAILSAFE -> RETURNING_HOME or LANDING -->
   <line x1="360" y1="520" x2="418" y2="510" class="edge"/>
 
   <!-- CONNECTED_DISARMED -> DISCONNECTED (heartbeat lost) -->
-  <path d="M 220 80 Q 180 100 160 80" class="edge edge-fail" marker-end="url(#sm-arr-red)"/>
+  <path fill="none" d="M 220 80 Q 180 100 160 80" class="edge edge-fail" marker-end="url(#sm-arr-red)"/>
   <text x="175" y="102" class="e-label" fill="#c62828">heartbeat lost</text>
 </svg>
