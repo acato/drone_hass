@@ -1,0 +1,177 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 600" font-family="Inter, -apple-system, sans-serif" font-size="11">
+  <defs>
+    <style>
+      .state { rx: 8; ry: 8; stroke-width: 2; }
+      .s-off { fill: #eceff1; stroke: #546e7a; }
+      .s-ground { fill: #e3f2fd; stroke: #1565c0; }
+      .s-air { fill: #e8f5e9; stroke: #2e7d32; }
+      .s-mission { fill: #fff3e0; stroke: #e65100; }
+      .s-return { fill: #fff9c4; stroke: #f57f17; }
+      .s-danger { fill: #ffebee; stroke: #c62828; }
+      .s-label { font-weight: 600; font-size: 11px; text-anchor: middle; }
+      .s-sub { font-size: 9px; fill: #616161; text-anchor: middle; }
+      .edge { fill: none; stroke: #757575; stroke-width: 1.2; marker-end: url(#sm-arr); }
+      .edge-fail { stroke: #c62828; stroke-dasharray: 5 3; }
+      .e-label { font-size: 8px; fill: #424242; }
+      .title { font-weight: 700; font-size: 14px; fill: #212121; }
+    </style>
+    <marker id="sm-arr" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
+      <polygon points="0 0, 7 2.5, 0 5" fill="#757575"/>
+    </marker>
+    <marker id="sm-arr-red" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
+      <polygon points="0 0, 7 2.5, 0 5" fill="#c62828"/>
+    </marker>
+  </defs>
+
+  <text x="450" y="22" text-anchor="middle" class="title">Drone Lifecycle State Machine</text>
+
+  <!-- DISCONNECTED -->
+  <rect class="state s-off" x="20" y="50" width="140" height="44"/>
+  <text x="90" y="70" class="s-label" fill="#546e7a">DISCONNECTED</text>
+  <text x="90" y="84" class="s-sub">No heartbeat</text>
+
+  <!-- CONNECTED_DISARMED -->
+  <rect class="state s-ground" x="220" y="50" width="160" height="44"/>
+  <text x="300" y="70" class="s-label" fill="#1565c0">CONNECTED_DISARMED</text>
+  <text x="300" y="84" class="s-sub">Heartbeat OK · Motors off</text>
+
+  <!-- PREFLIGHT_CHECKS -->
+  <rect class="state s-ground" x="440" y="50" width="160" height="44"/>
+  <text x="520" y="70" class="s-label" fill="#1565c0">PREFLIGHT_CHECKS</text>
+  <text x="520" y="84" class="s-sub">Safety gates · ComplianceGate</text>
+
+  <!-- ARMING -->
+  <rect class="state s-ground" x="660" y="50" width="120" height="44"/>
+  <text x="720" y="70" class="s-label" fill="#1565c0">ARMING</text>
+  <text x="720" y="84" class="s-sub">MAV_CMD 400</text>
+
+  <!-- ARMED_GROUND -->
+  <rect class="state s-ground" x="660" y="150" width="140" height="44"/>
+  <text x="730" y="170" class="s-label" fill="#1565c0">ARMED_GROUND</text>
+  <text x="730" y="184" class="s-sub">Motors armed · On ground</text>
+
+  <!-- TAKING_OFF -->
+  <rect class="state s-air" x="660" y="250" width="140" height="44"/>
+  <text x="730" y="270" class="s-label" fill="#2e7d32">TAKING_OFF</text>
+  <text x="730" y="284" class="s-sub">Climbing to target alt</text>
+
+  <!-- AIRBORNE_IDLE -->
+  <rect class="state s-air" x="420" y="250" width="160" height="44"/>
+  <text x="500" y="270" class="s-label" fill="#2e7d32">AIRBORNE_IDLE</text>
+  <text x="500" y="284" class="s-sub">Hovering · Awaiting command</text>
+
+  <!-- MISSION_EXECUTING -->
+  <rect class="state s-mission" x="180" y="250" width="170" height="44"/>
+  <text x="265" y="270" class="s-label" fill="#e65100">MISSION_EXECUTING</text>
+  <text x="265" y="284" class="s-sub">AUTO mode · Waypoints</text>
+
+  <!-- MISSION_PAUSED -->
+  <rect class="state s-mission" x="20" y="250" width="130" height="44"/>
+  <text x="85" y="270" class="s-label" fill="#e65100">MISSION_PAUSED</text>
+  <text x="85" y="284" class="s-sub">BRAKE/LOITER</text>
+
+  <!-- DAA_AVOIDANCE -->
+  <rect class="state s-danger" x="20" y="350" width="150" height="44"/>
+  <text x="95" y="370" class="s-label" fill="#c62828">DAA_AVOIDANCE</text>
+  <text x="95" y="384" class="s-sub">AP_Avoidance active</text>
+
+  <!-- RETURNING_HOME -->
+  <rect class="state s-return" x="420" y="400" width="160" height="44"/>
+  <text x="500" y="420" class="s-label" fill="#f57f17">RETURNING_HOME</text>
+  <text x="500" y="434" class="s-sub">RTL mode</text>
+
+  <!-- LANDING -->
+  <rect class="state s-return" x="420" y="500" width="160" height="44"/>
+  <text x="500" y="520" class="s-label" fill="#f57f17">LANDING</text>
+  <text x="500" y="534" class="s-sub">LAND mode · Descending</text>
+
+  <!-- FAILSAFE -->
+  <rect class="state s-danger" x="220" y="500" width="140" height="44"/>
+  <text x="290" y="520" class="s-label" fill="#c62828">FAILSAFE</text>
+  <text x="290" y="534" class="s-sub">GCS loss / batt / EKF / fence</text>
+
+  <!-- === EDGES === -->
+
+  <!-- DISCONNECTED -> CONNECTED_DISARMED -->
+  <line x1="160" y1="72" x2="218" y2="72" class="edge"/>
+  <text x="172" y="65" class="e-label">heartbeat</text>
+
+  <!-- CONNECTED_DISARMED -> PREFLIGHT_CHECKS -->
+  <line x1="380" y1="72" x2="438" y2="72" class="edge"/>
+  <text x="395" y="65" class="e-label">execute_mission</text>
+
+  <!-- PREFLIGHT_CHECKS -> ARMING -->
+  <line x1="600" y1="72" x2="658" y2="72" class="edge"/>
+  <text x="618" y="65" class="e-label">checks pass</text>
+
+  <!-- PREFLIGHT_CHECKS -> CONNECTED_DISARMED (fail) -->
+  <path d="M 520 94 Q 520 120 400 120 Q 300 120 300 94" class="edge edge-fail" marker-end="url(#sm-arr-red)"/>
+  <text x="420" y="115" class="e-label" fill="#c62828">check failed</text>
+
+  <!-- ARMING -> ARMED_GROUND -->
+  <line x1="720" y1="94" x2="720" y2="148" class="edge"/>
+  <text x="728" y="125" class="e-label">ACK success</text>
+
+  <!-- ARMING -> CONNECTED_DISARMED (denied) -->
+  <path d="M 660 82 Q 620 82 620 120 Q 620 140 380 94" class="edge edge-fail" marker-end="url(#sm-arr-red)"/>
+  <text x="600" y="130" class="e-label" fill="#c62828">denied</text>
+
+  <!-- ARMED_GROUND -> TAKING_OFF -->
+  <line x1="730" y1="194" x2="730" y2="248" class="edge"/>
+  <text x="738" y="225" class="e-label">takeoff</text>
+
+  <!-- TAKING_OFF -> AIRBORNE_IDLE -->
+  <line x1="660" y1="272" x2="582" y2="272" class="edge"/>
+  <text x="608" y="265" class="e-label">alt reached</text>
+
+  <!-- AIRBORNE_IDLE -> MISSION_EXECUTING -->
+  <line x1="420" y1="272" x2="352" y2="272" class="edge"/>
+  <text x="374" y="265" class="e-label">mission start</text>
+
+  <!-- AIRBORNE_IDLE -> RETURNING_HOME -->
+  <line x1="500" y1="294" x2="500" y2="398" class="edge"/>
+  <text x="508" y="350" class="e-label">RTL cmd</text>
+
+  <!-- AIRBORNE_IDLE -> LANDING -->
+  <path d="M 540 294 Q 540 380 540 498" class="edge"/>
+  <text x="548" y="380" class="e-label">land cmd</text>
+
+  <!-- MISSION_EXECUTING -> MISSION_PAUSED -->
+  <line x1="180" y1="272" x2="152" y2="272" class="edge"/>
+  <text x="155" y="265" class="e-label">pause</text>
+
+  <!-- MISSION_PAUSED -> MISSION_EXECUTING -->
+  <path d="M 150 272 Q 166 290 180 280" class="edge"/>
+  <text x="148" y="300" class="e-label">resume</text>
+
+  <!-- MISSION_EXECUTING -> DAA_AVOIDANCE -->
+  <line x1="220" y1="294" x2="140" y2="348" class="edge edge-fail" marker-end="url(#sm-arr-red)"/>
+  <text x="150" y="318" class="e-label" fill="#c62828">avoidance</text>
+
+  <!-- DAA_AVOIDANCE -> MISSION_EXECUTING -->
+  <path d="M 170 360 Q 200 340 220 264" class="edge"/>
+  <text x="200" y="330" class="e-label">clear</text>
+
+  <!-- MISSION_EXECUTING -> RETURNING_HOME (complete) -->
+  <path d="M 265 294 Q 265 400 418 420" class="edge"/>
+  <text x="290" y="380" class="e-label">mission complete</text>
+
+  <!-- RETURNING_HOME -> LANDING -->
+  <line x1="500" y1="444" x2="500" y2="498" class="edge"/>
+  <text x="508" y="475" class="e-label">near home</text>
+
+  <!-- LANDING -> CONNECTED_DISARMED -->
+  <path d="M 420 530 Q 300 560 300 530 Q 300 130 300 96" class="edge"/>
+  <text x="310" y="560" class="e-label">disarmed</text>
+
+  <!-- FAILSAFE (from any airborne) -->
+  <path d="M 265 294 Q 265 440 290 498" class="edge edge-fail" marker-end="url(#sm-arr-red)"/>
+  <text x="250" y="440" class="e-label" fill="#c62828">failsafe</text>
+
+  <!-- FAILSAFE -> RETURNING_HOME or LANDING -->
+  <line x1="360" y1="520" x2="418" y2="510" class="edge"/>
+
+  <!-- CONNECTED_DISARMED -> DISCONNECTED (heartbeat lost) -->
+  <path d="M 220 80 Q 180 100 160 80" class="edge edge-fail" marker-end="url(#sm-arr-red)"/>
+  <text x="175" y="102" class="e-label" fill="#c62828">heartbeat lost</text>
+</svg>

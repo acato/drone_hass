@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 300" font-family="Inter, -apple-system, sans-serif" font-size="11">
+  <defs>
+    <style>
+      .st { rx: 6; ry: 6; stroke-width: 1.5; }
+      .idle { fill: #eceff1; stroke: #546e7a; }
+      .prog { fill: #fff3e0; stroke: #e65100; }
+      .ok { fill: #e8f5e9; stroke: #2e7d32; }
+      .err { fill: #ffebee; stroke: #c62828; }
+      .lbl { font-weight: 600; font-size: 10px; text-anchor: middle; }
+      .slbl { font-size: 8px; fill: #616161; text-anchor: middle; }
+      .ed { fill: none; stroke: #757575; stroke-width: 1.2; marker-end: url(#ua); }
+      .ed-err { stroke: #c62828; stroke-dasharray: 4 2; marker-end: url(#ua-r); }
+      .ed-lbl { font-size: 7.5px; fill: #424242; }
+      .title { font-weight: 700; font-size: 13px; fill: #212121; }
+      .col { font-size: 10px; font-weight: 600; fill: #757575; }
+    </style>
+    <marker id="ua" markerWidth="6" markerHeight="4" refX="5" refY="2" orient="auto"><polygon points="0 0,6 2,0 4" fill="#757575"/></marker>
+    <marker id="ua-r" markerWidth="6" markerHeight="4" refX="5" refY="2" orient="auto"><polygon points="0 0,6 2,0 4" fill="#c62828"/></marker>
+  </defs>
+
+  <text x="280" y="20" text-anchor="middle" class="title">MAVLink Mission Upload Protocol</text>
+
+  <!-- Column labels -->
+  <text x="140" y="44" text-anchor="middle" class="col">Bridge</text>
+  <text x="420" y="44" text-anchor="middle" class="col">Flight Controller</text>
+  <line x1="140" y1="48" x2="140" y2="280" stroke="#e0e0e0" stroke-width="1" stroke-dasharray="3 3"/>
+  <line x1="420" y1="48" x2="420" y2="280" stroke="#e0e0e0" stroke-width="1" stroke-dasharray="3 3"/>
+
+  <!-- UPLOAD_IDLE -->
+  <rect class="st idle" x="70" y="56" width="140" height="30"/>
+  <text x="140" y="76" class="lbl" fill="#546e7a">UPLOAD_IDLE</text>
+
+  <!-- Arrow: send MISSION_COUNT -->
+  <line x1="210" y1="71" x2="350" y2="96" class="ed"/>
+  <text x="280" y="80" class="ed-lbl">MISSION_COUNT (n items)</text>
+
+  <!-- WAITING_REQUEST -->
+  <rect class="st prog" x="60" y="100" width="160" height="30"/>
+  <text x="140" y="120" class="lbl" fill="#e65100">WAITING_REQUEST</text>
+
+  <!-- Arrow: FC requests item -->
+  <line x1="350" y1="115" x2="220" y2="135" class="ed"/>
+  <text x="290" y="122" class="ed-lbl">MISSION_REQUEST_INT (seq=N)</text>
+
+  <!-- SENDING_ITEM -->
+  <rect class="st prog" x="60" y="140" width="160" height="30"/>
+  <text x="140" y="160" class="lbl" fill="#e65100">SENDING_ITEM</text>
+
+  <!-- Arrow: send item -->
+  <line x1="220" y1="155" x2="350" y2="170" class="ed"/>
+  <text x="290" y="160" class="ed-lbl">MISSION_ITEM_INT (seq=N)</text>
+
+  <!-- Loop back to WAITING -->
+  <path d="M 60 155 Q 30 140 30 120 Q 30 108 60 108" class="ed"/>
+  <text x="14" y="132" class="ed-lbl">next</text>
+
+  <!-- Arrow: FC sends ACK -->
+  <line x1="350" y1="210" x2="220" y2="220" class="ed"/>
+  <text x="290" y="210" class="ed-lbl">MISSION_ACK (type=0)</text>
+
+  <!-- UPLOAD_COMPLETE -->
+  <rect class="st ok" x="60" y="220" width="160" height="30"/>
+  <text x="140" y="240" class="lbl" fill="#2e7d32">UPLOAD_COMPLETE</text>
+
+  <!-- Error: MISSION_ACK type!=0 -->
+  <rect class="st err" x="350" y="250" width="160" height="30"/>
+  <text x="430" y="270" class="lbl" fill="#c62828">UPLOAD_ERROR</text>
+
+  <line x1="350" y1="230" x2="220" y2="260" class="ed-err"/>
+  <text x="290" y="240" class="ed-lbl" fill="#c62828">MISSION_ACK (type!=0)</text>
+
+  <!-- Timeout -->
+  <rect class="st err" x="350" y="140" width="160" height="30"/>
+  <text x="430" y="160" class="lbl" fill="#c62828">TIMEOUT</text>
+
+  <path d="M 220 120 Q 300 120 348 148" class="ed-err"/>
+  <text x="270" y="140" class="ed-lbl" fill="#c62828">5s no request</text>
+
+  <!-- Retry from timeout -->
+  <path d="M 350 155 Q 260 172 220 155" class="ed"/>
+  <text x="274" y="176" class="ed-lbl">retry &lt;3</text>
+</svg>

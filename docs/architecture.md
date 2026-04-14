@@ -188,63 +188,9 @@ These measures do not transfer legal responsibility from the operator but create
 
 ### 4.1 The Alarm Response Workflow
 
-**Part 107 mode (current):**
+![Alarm Response Workflow](diagrams/alarm-workflow.svg)
 
-```
-Alarm Sensor (PIR, gate, camera AI)
-    │
-    ▼
-Home Assistant Automation
-    │
-    ├── Safety Gate Check
-    │   ├── Wind < 15 mph? (local weather station)
-    │   ├── No rain? (local rain gauge)
-    │   ├── Battery > threshold?
-    │   ├── GPS lock confirmed?
-    │   ├── Dock connected?
-    │   ├── Drone connected?
-    │   ├── DAA system healthy?
-    │   ├── Airspace clear? (ADS-B ground check)
-    │   └── Not already airborne?
-    │
-    ├── Select Mission Profile
-    │   ├── Driveway sensor → front sweep
-    │   ├── Backyard motion → rear orbit
-    │   ├── Full alarm → full perimeter loop
-    │   └── Manual → investigate waypoint
-    │
-    ├── Prepare Dock
-    │   └── Open lid (if closed)
-    │
-    ▼
-Actionable Push Notification to RPIC
-    ┌─────────────────────────────────┐
-    │ Perimeter Alert — East Fence    │
-    │ Wind OK · GPS OK · Battery 85% │
-    │ ADS-B Clear · DAA Healthy       │
-    │ Mission: Full Perimeter         │
-    │                                 │
-    │  [LAUNCH DRONE]    [IGNORE]     │
-    └─────────────────────────────────┘
-    │
-    ▼ (RPIC taps LAUNCH — Part 107 compliance moment)
-    │
-    ├── Compliance record: trigger, authorization, weather, personnel
-    ├── Start live stream
-    ├── Execute waypoint mission
-    ├── Display live feed in HA dashboard
-    ├── Record video (onboard + media server)
-    │
-    ▼
-Mission completes → auto RTL → dock lid closes
-    │
-    ▼
-Compliance record: mission outcome, DAA events, flight log
-```
-
-**Part 108 mode (target):**
-
-Same flow, except the actionable notification is replaced by:
+**Part 108 mode** follows the same flow, except the actionable notification is replaced by:
 - Autonomous launch after all safety gates pass
 - Flight Coordinator receives monitoring notification with ABORT/RTH override buttons
 - Compliance record includes autonomous authorization justification
@@ -357,15 +303,7 @@ On the shed roof. Requirements:
 
 ### 5.7 Power Architecture
 
-```
-Mains (from shed) → UPS → 12/24V DC supply
-                          ├── Actuator rail (fused)
-                          ├── Compute/sensor rail (fused)
-                          └── Heater/fan rail (fused)
-
-Separate smart outlet → Battery charger → battery
-(HA controls the outlet; never modify OEM charging electronics)
-```
+![Power Architecture](diagrams/power-architecture.svg)
 
 UPS is important: brownouts during storms are common — exactly when you want the system most.
 
@@ -591,88 +529,7 @@ The MQTT contract is the interface — the integration works identically regardl
 
 ### 8.2 High-Level Overview
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                         HOME ASSISTANT SERVER                        │
-│                                                                      │
-│  ┌────────────────────┐  ┌─────────────────────────────────────┐    │
-│  │  ESPHome Dock      │  │     drone_hass Integration          │    │
-│  │  Controller        │  │     (custom_components/)             │    │
-│  │                    │  │                                     │    │
-│  │  cover.dock_lid    │  │  ┌──────────┐  ┌────────────────┐   │    │
-│  │  sensor.dock_temp  │  │  │  MQTT    │  │  Service        │   │    │
-│  │  switch.dock_heat  │  │  │  Coord.  │  │  Handlers       │   │    │
-│  │  binary.dock_smoke │  │  └────┬─────┘  └──────┬─────────┘   │    │
-│  │  ...               │  │       │               │              │    │
-│  └─────────┬──────────┘  │  Uses homeassistant.components.mqtt  │    │
-│            │ ESPHome API │  (HA's managed MQTT client, not own) │    │
-│            │             │                  │                    │    │
-│  ┌─────────┴──────────┐  │  Sensors│Binary│Camera│DeviceTracker │    │
-│  │  Mosquitto Broker  │◄─┤  Compliance│FC Status│DAA Traffic    │    │
-│  │  (add-on)          │  └──────────────────┬───────────────────┘    │
-│  └─────────┬──────────┘                     │                       │
-│            │                      ┌──────────┴──────────┐           │
-│  ┌─────────┴──────────┐          │  camera.drone_live   │           │
-│  │  Media Server      │◄─────────┤  consumes stream    │           │
-│  │  (go2rtc add-on)   │  WebRTC  │  from media server  │           │
-│  └─────────┬──────────┘          └─────────────────────┘           │
-│            │ ▲ Pulls RTSP                                           │
-└────────────┤─┤──────────────────────────────────────────────────────┘
-             │ │              ▲ MQTT (sole interface between
-             │ │              │ add-on and integration)
-     ┌───────┤─┤──────────────┤────────────────────────────────┐
-     │       │ │              │                                 │
-     │  drone_hass Bridge Add-on (Docker container)            │
-     │  Managed by HA Supervisor — starts before HA Core       │
-     │  Keeps running through HA restarts                      │
-     │                                                         │
-     │  ┌──────────────────────────────────────────────────┐   │
-     │  │  MAVSDK-Python (async) ←→ aiomqtt               │   │
-     │  │                                                  │   │
-     │  │  ┌──────────────┐ ┌──────────────┐               │   │
-     │  │  │ Telemetry    │ │ Command      │               │   │
-     │  │  │ Publisher    │ │ Handler      │               │   │
-     │  │  └──────┬───────┘ └──────┬───────┘               │   │
-     │  │  ┌──────┴───────┐ ┌──────┴───────┐               │   │
-     │  │  │ Mission      │ │ DAA Monitor  │               │   │
-     │  │  │ Manager      │ │ (ADS-B)      │               │   │
-     │  │  └──────┬───────┘ └──────┬───────┘               │   │
-     │  │  ┌──────┴────────────────┴───────┐               │   │
-     │  │  │ Compliance Recorder (SQLite)  │               │   │
-     │  │  │ /data/compliance/compliance.db │               │   │
-     │  │  └───────────────────────────────┘               │   │
-     │  │  ┌───────────────────────────────┐               │   │
-     │  │  │ ComplianceGate (107/108 mode) │               │   │
-     │  │  └───────────────────────────────┘               │   │
-     │  └──────────────────────┬───────────────────────────┘   │
-     │                         │ MAVLink (UDP/TCP over WiFi    │
-     │                         │  + SiK 915MHz backup)         │
-     │     ┌───────────────────┴───────────────────┐           │
-     │     │           AIRCRAFT                     │           │
-     │     │                                        │           │
-     │     │  Flight Controller (ArduPilot)         │           │
-     │     │    ├── AP_Avoidance (ADS-B)            │           │
-     │     │    ├── Firmware geofence (polygon)     │           │
-     │     │    ├── Failsafe (GCS loss, battery,    │           │
-     │     │    │   geofence, EKF)                  │           │
-     │     │    └── OpenDroneID (Remote ID)         │           │
-     │     │                                        │           │
-     │     │  ADS-B In Receiver (pingRX)            │           │
-     │     │  Companion Computer (RPi)              │           │
-     │     │    └── Camera RTSP server              │──────────►│ RTSP
-     │     │  Camera + Gimbal                       │  (WiFi)   │
-     │     │  Anti-collision strobe                 │           │
-     │     │  Remote ID module                      │           │
-     │     └────────────────────────────────────────┘           │
-     │                                                          │
-     │     ┌────────────────────────────────────────┐           │
-     │     │           PHYSICAL DOCK                │           │
-     │     │  ESPHome ESP32: lid, sensors, heater   │           │
-     │     │  Weather station: anemometer, rain     │           │
-     │     │  ADS-B ground receiver (optional)      │           │
-     │     └────────────────────────────────────────┘           │
-     └──────────────────────────────────────────────────────────┘
-```
+![System Architecture](diagrams/system-overview.svg)
 
 ### 8.3 Bridge Add-on
 

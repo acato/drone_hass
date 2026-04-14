@@ -31,41 +31,7 @@
 
 ### 1.2 Trust Boundaries
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│ TRUST BOUNDARY 1: Home Network (LAN/WiFi)                          │
-│                                                                     │
-│  ┌──────────────────────────┐   ┌──────────────────────────┐       │
-│  │ TRUST BOUNDARY 2:        │   │ TRUST BOUNDARY 3:        │       │
-│  │ HA Server / Docker Host  │   │ Aircraft (WiFi + RF)     │       │
-│  │                          │   │                          │       │
-│  │  Mosquitto Broker        │   │  Pixhawk 6C (FC)        │       │
-│  │  Bridge Add-on Container │   │  Companion RPi          │       │
-│  │  HA Core                 │   │  ADS-B Receiver         │       │
-│  │  go2rtc / mediamtx       │   │  Camera/Gimbal          │       │
-│  │  Compliance DB (SQLite)  │   │  SiK 915 MHz Radio      │       │
-│  │  Ed25519 Private Key     │   │  Remote ID Module       │       │
-│  └──────────────────────────┘   └──────────────────────────┘       │
-│                                                                     │
-│  ┌──────────────────────────┐   ┌──────────────────────────┐       │
-│  │ TRUST BOUNDARY 4:        │   │ TRUST BOUNDARY 5:        │       │
-│  │ Physical Dock             │   │ Operator Devices         │       │
-│  │                          │   │                          │       │
-│  │  ESP32 (ESPHome)         │   │  Phone (notifications)  │       │
-│  │  Actuator/Sensors        │   │  Workstation (HA UI)    │       │
-│  │  Weather Station         │   │  RC Transmitter         │       │
-│  └──────────────────────────┘   └──────────────────────────┘       │
-│                                                                     │
-│  ┌──────────────────────────┐                                      │
-│  │ TRUST BOUNDARY 6:        │                                      │
-│  │ External / Off-network   │                                      │
-│  │                          │                                      │
-│  │  Litestream S3/GCS/NAS  │                                      │
-│  │  Mobile push (Apple/Goo)│                                      │
-│  │  ADS-B RF environment   │                                      │
-│  └──────────────────────────┘                                      │
-└─────────────────────────────────────────────────────────────────────┘
-```
+![Trust Boundaries](diagrams/trust-boundaries.svg)
 
 ### 1.3 Data Flows Crossing Trust Boundaries
 

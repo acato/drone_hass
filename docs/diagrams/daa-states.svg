@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 380" font-family="Inter, -apple-system, sans-serif" font-size="11">
+  <defs>
+    <style>
+      .st { rx: 8; ry: 8; stroke-width: 1.5; }
+      .none { fill: #eceff1; stroke: #546e7a; }
+      .adv { fill: #e3f2fd; stroke: #1565c0; }
+      .warn { fill: #fff9c4; stroke: #f57f17; }
+      .crit { fill: #ffebee; stroke: #c62828; }
+      .avoid { fill: #f3e5f5; stroke: #6a1b9a; }
+      .lbl { font-weight: 600; font-size: 11px; text-anchor: middle; }
+      .slbl { font-size: 9px; fill: #616161; text-anchor: middle; }
+      .ed { fill: none; stroke: #757575; stroke-width: 1.2; marker-end: url(#da); }
+      .ed-esc { stroke: #2e7d32; stroke-dasharray: 5 3; marker-end: url(#da-g); }
+      .ed-lbl { font-size: 8px; fill: #424242; }
+      .title { font-weight: 700; font-size: 14px; fill: #212121; }
+    </style>
+    <marker id="da" markerWidth="6" markerHeight="4" refX="5" refY="2" orient="auto"><polygon points="0 0,6 2,0 4" fill="#757575"/></marker>
+    <marker id="da-g" markerWidth="6" markerHeight="4" refX="5" refY="2" orient="auto"><polygon points="0 0,6 2,0 4" fill="#2e7d32"/></marker>
+  </defs>
+
+  <text x="360" y="22" text-anchor="middle" class="title">DAA Per-Contact State Machine</text>
+
+  <!-- UNTRACKED -->
+  <rect class="st none" x="10" y="120" width="120" height="44"/>
+  <text x="70" y="140" class="lbl" fill="#546e7a">UNTRACKED</text>
+  <text x="70" y="154" class="slbl">No data / timed out</text>
+
+  <!-- TRACKING_NONE -->
+  <rect class="st none" x="180" y="120" width="130" height="44"/>
+  <text x="245" y="140" class="lbl" fill="#546e7a">TRACKING_NONE</text>
+  <text x="245" y="154" class="slbl">Distant / diverging</text>
+
+  <!-- TRACKING_ADVISORY -->
+  <rect class="st adv" x="360" y="120" width="150" height="44"/>
+  <text x="435" y="140" class="lbl" fill="#1565c0">TRACKING_ADVISORY</text>
+  <text x="435" y="154" class="slbl">1500-3000m, closing</text>
+
+  <!-- TRACKING_WARNING -->
+  <rect class="st warn" x="360" y="220" width="150" height="44"/>
+  <text x="435" y="240" class="lbl" fill="#f57f17">TRACKING_WARNING</text>
+  <text x="435" y="254" class="slbl">500-1500m, closing</text>
+
+  <!-- TRACKING_CRITICAL -->
+  <rect class="st crit" x="560" y="220" width="150" height="44"/>
+  <text x="635" y="240" class="lbl" fill="#c62828">TRACKING_CRITICAL</text>
+  <text x="635" y="254" class="slbl">&lt;500m or CPA &lt;30s</text>
+
+  <!-- AVOIDANCE_ACTIVE -->
+  <rect class="st avoid" x="560" y="310" width="150" height="44"/>
+  <text x="635" y="330" class="lbl" fill="#6a1b9a">AVOIDANCE_ACTIVE</text>
+  <text x="635" y="344" class="slbl">AP_Avoidance engaged</text>
+
+  <!-- AVOIDANCE_RTL -->
+  <rect class="st avoid" x="360" y="310" width="150" height="44"/>
+  <text x="435" y="330" class="lbl" fill="#6a1b9a">AVOIDANCE_RTL</text>
+  <text x="435" y="344" class="slbl">RTL triggered by DAA</text>
+
+  <!-- Edges: escalation -->
+  <line x1="130" y1="142" x2="178" y2="142" class="ed"/>
+  <text x="145" y="136" class="ed-lbl">ADSB_VEHICLE rx</text>
+
+  <line x1="310" y1="142" x2="358" y2="142" class="ed"/>
+  <text x="325" y="136" class="ed-lbl">closing &lt;3000m</text>
+
+  <line x1="435" y1="164" x2="435" y2="218" class="ed"/>
+  <text x="445" y="195" class="ed-lbl">closing &lt;1500m</text>
+
+  <line x1="510" y1="242" x2="558" y2="242" class="ed"/>
+  <text x="528" y="236" class="ed-lbl">&lt;500m</text>
+
+  <line x1="635" y1="264" x2="635" y2="308" class="ed"/>
+  <text x="648" y="290" class="ed-lbl">AP triggers</text>
+
+  <line x1="560" y1="332" x2="512" y2="332" class="ed"/>
+  <text x="530" y="326" class="ed-lbl">RTL</text>
+
+  <!-- Edges: de-escalation -->
+  <path d="M 558 254 Q 530 268 510 254 Q 475 240 450 218" class="ed-esc"/>
+  <text x="506" y="272" class="ed-lbl" fill="#2e7d32">receding</text>
+
+  <path d="M 390 220 Q 370 190 370 164" class="ed-esc"/>
+  <text x="358" y="195" class="ed-lbl" fill="#2e7d32">receding</text>
+
+  <path d="M 360 142 Q 330 142 310 142" class="ed-esc"/>
+  <text x="325" y="158" class="ed-lbl" fill="#2e7d32">receding</text>
+
+  <!-- Avoidance -> re-track -->
+  <path d="M 680 310 Q 710 280 680 264" class="ed-esc"/>
+  <text x="702" y="290" class="ed-lbl" fill="#2e7d32">clears</text>
+
+  <!-- Timeout: TRACKING_NONE -> UNTRACKED -->
+  <path d="M 180 152 Q 150 170 130 164" class="ed"/>
+  <text x="140" y="176" class="ed-lbl">60s timeout</text>
+
+  <!-- Legend -->
+  <rect x="10" y="42" width="700" height="56" rx="4" fill="#fafafa" stroke="#e0e0e0"/>
+  <text x="24" y="60" font-size="10" font-weight="600" fill="#424242">Threat Classification (per ADS-B contact)</text>
+  <rect x="24" y="68" width="12" height="12" rx="2" class="st none"/><text x="42" y="78" class="ed-lbl">None (&gt;3000m / diverging)</text>
+  <rect x="180" y="68" width="12" height="12" rx="2" class="st adv"/><text x="198" y="78" class="ed-lbl">Advisory (1500-3000m, closing)</text>
+  <rect x="370" y="68" width="12" height="12" rx="2" class="st warn"/><text x="388" y="78" class="ed-lbl">Warning (500-1500m, closing / CPA &lt;60s)</text>
+  <rect x="590" y="68" width="12" height="12" rx="2" class="st crit"/><text x="608" y="78" class="ed-lbl">Critical (&lt;500m / CPA &lt;30s)</text>
+  <text x="24" y="92" class="ed-lbl">Altitude separation &gt;150m (500ft) = always None regardless of horizontal distance</text>
+</svg>

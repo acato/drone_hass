@@ -679,58 +679,7 @@ The bridge:
 
 ### 3.1 States
 
-```
-DISCONNECTED
-  │
-  ├── (heartbeat received) ──► CONNECTED_DISARMED
-  │                              │
-  │                              ├── (pre-flight checks pass + authorization) ──► PREFLIGHT_CHECKS
-  │                              │                                                   │
-  │                              │                                                   ├── (all checks pass) ──► ARMING
-  │                              │                                                   │                          │
-  │                              │                                                   │                          ├── (arm ACK success) ──► ARMED_GROUND
-  │                              │                                                   │                          │                          │
-  │                              │                                                   │                          │                          ├── (takeoff cmd) ──► TAKING_OFF
-  │                              │                                                   │                          │                          │                      │
-  │                              │                                                   │                          │                          │                      ├── (alt reached) ──► AIRBORNE_IDLE
-  │                              │                                                   │                          │                          │                      │                      │
-  │                              │                                                   │                          │                          │                      │                      ├── (mission start) ──► MISSION_EXECUTING
-  │                              │                                                   │                          │                          │                      │                      │                         │
-  │                              │                                                   │                          │                          │                      │                      │                         ├── (pause) ──► MISSION_PAUSED
-  │                              │                                                   │                          │                          │                      │                      │                         │                │
-  │                              │                                                   │                          │                          │                      │                      │                         │                ├── (resume) ──► MISSION_EXECUTING
-  │                              │                                                   │                          │                          │                      │                      │                         │                └── (stop) ──► AIRBORNE_IDLE
-  │                              │                                                   │                          │                          │                      │                      │                         │
-  │                              │                                                   │                          │                          │                      │                      │                         ├── (mission complete) ──► RETURNING_HOME
-  │                              │                                                   │                          │                          │                      │                      │                         ├── (stop) ──► AIRBORNE_IDLE
-  │                              │                                                   │                          │                          │                      │                      │                         └── (avoidance) ──► DAA_AVOIDANCE
-  │                              │                                                   │                          │                          │                      │                      │                                             │
-  │                              │                                                   │                          │                          │                      │                      │                                             └── (clear) ──► MISSION_EXECUTING (resumes)
-  │                              │                                                   │                          │                          │                      │                      │
-  │                              │                                                   │                          │                          │                      │                      ├── (RTL cmd) ──► RETURNING_HOME
-  │                              │                                                   │                          │                          │                      │                      └── (land cmd) ──► LANDING
-  │                              │                                                   │                          │                          │                      │
-  │                              │                                                   │                          │                          │                      │
-  │                              │                                                   │                          │                          │
-  │                              │                                                   │                          │                          ├── (disarm cmd or timeout) ──► CONNECTED_DISARMED
-  │                              │                                                   │                          │
-  │                              │                                                   │                          ├── (arm denied) ──► CONNECTED_DISARMED + error
-  │                              │                                                   │
-  │                              │                                                   ├── (check failed) ──► CONNECTED_DISARMED + error
-  │                              │
-  │                              │
-  │                              ├── (heartbeat lost) ──► DISCONNECTED
-  │
-  │
-  RETURNING_HOME ──► (alt descending + near home) ──► LANDING ──► (disarmed detected) ──► CONNECTED_DISARMED
-  │
-  LANDING ──► (disarmed detected) ──► CONNECTED_DISARMED
-  │
-  DAA_AVOIDANCE ──► (RTL triggered by AP_Avoidance) ──► RETURNING_HOME
-  │
-  FAILSAFE ──► (from ANY airborne state, on GCS loss / low battery / EKF failure / geofence breach)
-           ──► RETURNING_HOME or LANDING (depending on failsafe action)
-```
+![Drone Lifecycle State Machine](diagrams/drone-lifecycle.svg)
 
 ### 3.2 Formal State Table
 
@@ -785,22 +734,7 @@ The bridge determines state by combining multiple MAVLink signals:
 
 ### 4.1 States
 
-```
-IDLE ──► VALIDATING ──► UPLOADING ──► STARTING ──► EXECUTING ──► COMPLETING ──► COMPLETED
-  ▲          │              │            │            │    │          │
-  │          │              │            │            │    │          └──► IDLE
-  │          ▼              ▼            ▼            │    ▼
-  │       REJECTED     UPLOAD_FAILED  START_FAILED   │  PAUSED ──► EXECUTING
-  │          │              │            │            │    │
-  │          └──► IDLE      └──► IDLE    └──► IDLE   │    └──► ABORTED ──► IDLE
-  │                                                  │
-  │                                                  ├──► ABORTED ──► IDLE
-  │                                                  ├──► DAA_INTERRUPTED ──► EXECUTING (if clears)
-  │                                                  │                   └──► ABORTED (if RTL triggered)
-  │                                                  └──► FAILSAFE_INTERRUPTED ──► (exits mission SM)
-  │
-  └──────────────────────────────────────────────────────────────────────────────
-```
+![Mission State Machine](diagrams/mission-lifecycle.svg)
 
 ### 4.2 Formal State Table
 
@@ -825,23 +759,7 @@ IDLE ──► VALIDATING ──► UPLOADING ──► STARTING ──► EXECU
 
 The MAVLink mission upload handshake has its own internal states:
 
-```
-UPLOAD_IDLE
-  │── (send MISSION_COUNT) ──► WAITING_REQUEST
-                                 │
-                                 ├── (MISSION_REQUEST_INT received) ──► SENDING_ITEM
-                                 │                                       │
-                                 │                                       └── (item sent) ──► WAITING_REQUEST
-                                 │
-                                 ├── (MISSION_ACK type=0 received) ──► UPLOAD_COMPLETE
-                                 │
-                                 ├── (MISSION_ACK type!=0 received) ──► UPLOAD_ERROR
-                                 │
-                                 └── (timeout 5s no request) ──► UPLOAD_TIMEOUT
-                                       │
-                                       ├── (retry < 3) ──► resend last item ──► WAITING_REQUEST
-                                       └── (retry >= 3) ──► UPLOAD_ERROR
-```
+![Upload Protocol State Machine](diagrams/upload-protocol.svg)
 
 **Retry logic:** If a `MISSION_REQUEST_INT` is received for a seq that was already sent, the bridge resends that item (the FC did not receive it). Up to 3 retries per item.
 
@@ -899,28 +817,7 @@ Contacts with altitude separation > 150m (500ft) are always `none` regardless of
 
 Each tracked ADS-B contact has its own state:
 
-```
-UNTRACKED ──► (ADSB_VEHICLE received) ──► TRACKING_NONE
-                                            │
-                                            ├── (closing, distance < 3000m) ──► TRACKING_ADVISORY
-                                            │                                    │
-                                            │                                    ├── (closing, distance < 1500m) ──► TRACKING_WARNING
-                                            │                                    │                                    │
-                                            │                                    │                                    ├── (distance < 500m) ──► TRACKING_CRITICAL
-                                            │                                    │                                    │                          │
-                                            │                                    │                                    │                          ├── (AP_Avoidance triggers) ──► AVOIDANCE_ACTIVE
-                                            │                                    │                                    │                          │                               │
-                                            │                                    │                                    │                          │                               ├── (threat clears) ──► TRACKING_* (recalc)
-                                            │                                    │                                    │                          │                               └── (RTL triggered) ──► AVOIDANCE_RTL
-                                            │                                    │                                    │                          │
-                                            │                                    │                                    │                          └── (receding) ──► TRACKING_WARNING
-                                            │                                    │                                    │
-                                            │                                    │                                    └── (receding) ──► TRACKING_ADVISORY
-                                            │                                    │
-                                            │                                    └── (receding) ──► TRACKING_NONE
-                                            │
-                                            └── (no update for 60s) ──► UNTRACKED (contact removed)
-```
+![DAA Per-Contact State Machine](diagrams/daa-states.svg)
 
 ### 5.3 Global DAA State (Published to `state/daa`)
 
@@ -969,17 +866,7 @@ Every DAA event is written to the compliance recorder (Section 11.2 of architect
 
 ### 6.1 States
 
-```
-DISCONNECTED ──► (heartbeat received) ──► CONNECTED
-                                           │
-                                           ├── (no heartbeat for 5s) ──► HEARTBEAT_LOST
-                                           │                              │
-                                           │                              ├── (heartbeat resumes within 15s) ──► CONNECTED
-                                           │                              │
-                                           │                              └── (no heartbeat for 15s total) ──► DISCONNECTED
-                                           │
-                                           └── (MAVSDK connection error) ──► DISCONNECTED
-```
+![Connection/Heartbeat State Machine](diagrams/connection-states.svg)
 
 ### 6.2 Timing Parameters
 

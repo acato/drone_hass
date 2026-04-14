@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 340" font-family="Inter, -apple-system, sans-serif" font-size="11">
+  <defs>
+    <style>
+      .st { rx: 6; ry: 6; stroke-width: 1.5; }
+      .ok { fill: #e8f5e9; stroke: #2e7d32; }
+      .prog { fill: #fff3e0; stroke: #e65100; }
+      .err { fill: #ffebee; stroke: #c62828; }
+      .idle { fill: #eceff1; stroke: #546e7a; }
+      .done { fill: #e3f2fd; stroke: #1565c0; }
+      .lbl { font-weight: 600; font-size: 10px; text-anchor: middle; }
+      .slbl { font-size: 8px; fill: #616161; text-anchor: middle; }
+      .ed { fill: none; stroke: #757575; stroke-width: 1.2; marker-end: url(#ma); }
+      .ed-err { stroke: #c62828; stroke-dasharray: 4 2; marker-end: url(#ma-r); }
+      .ed-lbl { font-size: 7.5px; fill: #616161; }
+      .title { font-weight: 700; font-size: 14px; fill: #212121; }
+    </style>
+    <marker id="ma" markerWidth="6" markerHeight="4" refX="5" refY="2" orient="auto"><polygon points="0 0,6 2,0 4" fill="#757575"/></marker>
+    <marker id="ma-r" markerWidth="6" markerHeight="4" refX="5" refY="2" orient="auto"><polygon points="0 0,6 2,0 4" fill="#c62828"/></marker>
+  </defs>
+
+  <text x="430" y="22" text-anchor="middle" class="title">Mission State Machine</text>
+
+  <!-- Happy path: IDLE -> VALIDATING -> UPLOADING -> STARTING -> EXECUTING -> COMPLETING -> COMPLETED -->
+  <rect class="st idle" x="10" y="60" width="80" height="36"/><text x="50" y="78" class="lbl" fill="#546e7a">IDLE</text><text x="50" y="90" class="slbl"></text>
+  <rect class="st ok" x="110" y="60" width="100" height="36"/><text x="160" y="78" class="lbl" fill="#2e7d32">VALIDATING</text><text x="160" y="90" class="slbl">area · gates</text>
+  <rect class="st prog" x="230" y="60" width="100" height="36"/><text x="280" y="78" class="lbl" fill="#e65100">UPLOADING</text><text x="280" y="90" class="slbl">MAVLink protocol</text>
+  <rect class="st prog" x="350" y="60" width="100" height="36"/><text x="400" y="78" class="lbl" fill="#e65100">STARTING</text><text x="400" y="90" class="slbl">arm · takeoff · AUTO</text>
+  <rect class="st prog" x="470" y="60" width="110" height="36"/><text x="525" y="78" class="lbl" fill="#e65100">EXECUTING</text><text x="525" y="90" class="slbl">waypoints</text>
+  <rect class="st ok" x="600" y="60" width="110" height="36"/><text x="655" y="78" class="lbl" fill="#2e7d32">COMPLETING</text><text x="655" y="90" class="slbl">finish action</text>
+  <rect class="st done" x="730" y="60" width="110" height="36"/><text x="785" y="78" class="lbl" fill="#1565c0">COMPLETED</text><text x="785" y="90" class="slbl">logged · -> IDLE</text>
+
+  <!-- Happy path arrows -->
+  <line x1="90" y1="78" x2="108" y2="78" class="ed"/>
+  <line x1="210" y1="78" x2="228" y2="78" class="ed"/>
+  <line x1="330" y1="78" x2="348" y2="78" class="ed"/>
+  <line x1="450" y1="78" x2="468" y2="78" class="ed"/>
+  <line x1="580" y1="78" x2="598" y2="78" class="ed"/>
+  <line x1="710" y1="78" x2="728" y2="78" class="ed"/>
+
+  <!-- Error states -->
+  <rect class="st err" x="110" y="140" width="100" height="36"/><text x="160" y="158" class="lbl" fill="#c62828">REJECTED</text><text x="160" y="170" class="slbl">validation failed</text>
+  <rect class="st err" x="230" y="140" width="110" height="36"/><text x="285" y="158" class="lbl" fill="#c62828">UPLOAD_FAILED</text><text x="285" y="170" class="slbl">ACK error / timeout</text>
+  <rect class="st err" x="350" y="140" width="110" height="36"/><text x="405" y="158" class="lbl" fill="#c62828">START_FAILED</text><text x="405" y="170" class="slbl">arm denied</text>
+
+  <!-- Error arrows -->
+  <line x1="160" y1="96" x2="160" y2="138" class="ed-err"/>
+  <line x1="280" y1="96" x2="285" y2="138" class="ed-err"/>
+  <line x1="400" y1="96" x2="405" y2="138" class="ed-err"/>
+
+  <!-- Error -> IDLE -->
+  <path d="M 110 158 Q 60 158 50 96" class="ed-err"/>
+  <path d="M 230 158 Q 60 180 50 96" class="ed-err"/>
+  <path d="M 350 158 Q 60 200 50 96" class="ed-err"/>
+
+  <!-- PAUSED -->
+  <rect class="st prog" x="470" y="160" width="110" height="36"/><text x="525" y="178" class="lbl" fill="#e65100">PAUSED</text><text x="525" y="190" class="slbl">BRAKE / LOITER</text>
+  <line x1="525" y1="96" x2="525" y2="158" class="ed"/>
+  <text x="536" y="130" class="ed-lbl">pause</text>
+  <path d="M 505 160 Q 490 130 505 96" class="ed"/>
+  <text x="480" y="130" class="ed-lbl">resume</text>
+
+  <!-- ABORTED -->
+  <rect class="st err" x="470" y="240" width="110" height="36"/><text x="525" y="258" class="lbl" fill="#c62828">ABORTED</text><text x="525" y="270" class="slbl">stop cmd</text>
+  <line x1="525" y1="196" x2="525" y2="238" class="ed-err"/>
+  <text x="536" y="220" class="ed-lbl">stop</text>
+  <path d="M 470 260 Q 60 280 50 96" class="ed-err"/>
+
+  <!-- DAA_INTERRUPTED -->
+  <rect class="st err" x="620" y="160" width="140" height="36"/><text x="690" y="178" class="lbl" fill="#c62828">DAA_INTERRUPTED</text><text x="690" y="190" class="slbl">AP_Avoidance</text>
+  <path d="M 560 96 Q 580 130 618 172" class="ed-err"/>
+  <text x="576" y="142" class="ed-lbl" fill="#c62828">avoidance</text>
+  <path d="M 620 168 Q 590 130 560 96" class="ed"/>
+  <text x="600" y="155" class="ed-lbl">clears</text>
+
+  <!-- FAILSAFE -->
+  <rect class="st err" x="620" y="240" width="160" height="36"/><text x="700" y="258" class="lbl" fill="#c62828">FAILSAFE_INTERRUPTED</text><text x="700" y="270" class="slbl">exits mission SM</text>
+  <path d="M 560 96 Q 610 200 620 252" class="ed-err"/>
+  <text x="598" y="210" class="ed-lbl" fill="#c62828">failsafe</text>
+
+  <!-- Legend -->
+  <rect x="10" y="300" width="840" height="28" rx="4" fill="#fafafa" stroke="#e0e0e0"/>
+  <rect x="24" y="306" width="14" height="14" rx="3" class="st ok"/><text x="44" y="317" class="ed-lbl">Success path</text>
+  <rect x="120" y="306" width="14" height="14" rx="3" class="st prog"/><text x="140" y="317" class="ed-lbl">In progress</text>
+  <rect x="220" y="306" width="14" height="14" rx="3" class="st err"/><text x="240" y="317" class="ed-lbl">Error / interruption</text>
+  <line x1="360" y1="313" x2="390" y2="313" class="ed"/><text x="396" y="317" class="ed-lbl">Normal transition</text>
+  <line x1="500" y1="313" x2="530" y2="313" class="ed-err"/><text x="536" y="317" class="ed-lbl">Error / abort transition</text>
+</svg>

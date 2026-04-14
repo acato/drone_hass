@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 520" font-family="Inter, -apple-system, sans-serif" font-size="11">
+  <defs>
+    <style>
+      .boundary { fill: none; stroke-width: 2; rx: 10; ry: 10; stroke-dasharray: 8 4; }
+      .b1 { stroke: #78909c; }
+      .b-inner { stroke-width: 1.5; rx: 6; ry: 6; }
+      .b2 { fill: #e3f2fd20; stroke: #1565c0; }
+      .b3 { fill: #e8f5e920; stroke: #2e7d32; }
+      .b4 { fill: #fce4ec20; stroke: #c62828; }
+      .b5 { fill: #fff3e020; stroke: #e65100; }
+      .b6 { fill: #f3e5f520; stroke: #6a1b9a; }
+      .title { font-weight: 700; font-size: 14px; fill: #212121; }
+      .btitle { font-weight: 600; font-size: 11px; }
+      .item { font-size: 10px; fill: #424242; }
+      .flow { stroke: #9e9e9e; stroke-width: 1; fill: none; marker-end: url(#arr); }
+      .flow-label { font-size: 9px; fill: #757575; font-style: italic; }
+    </style>
+    <marker id="arr" markerWidth="6" markerHeight="5" refX="5" refY="2.5" orient="auto">
+      <polygon points="0 0, 6 2.5, 0 5" fill="#9e9e9e"/>
+    </marker>
+  </defs>
+
+  <text x="390" y="22" text-anchor="middle" class="title">Trust Boundaries</text>
+
+  <!-- TB1: Home Network -->
+  <rect class="boundary b1" x="10" y="34" width="760" height="475"/>
+  <text x="24" y="52" class="btitle" fill="#78909c">TB1: Home Network (LAN / WiFi)</text>
+
+  <!-- TB2: HA Server -->
+  <rect class="b-inner b2" x="30" y="64" width="340" height="200"/>
+  <text x="44" y="82" class="btitle" fill="#1565c0">TB2: HA Server / Docker Host</text>
+  <text x="44" y="100" class="item">Mosquitto Broker (TLS + ACL)</text>
+  <text x="44" y="114" class="item">Bridge Add-on Container</text>
+  <text x="44" y="128" class="item">HA Core</text>
+  <text x="44" y="142" class="item">go2rtc / mediamtx</text>
+  <text x="44" y="160" class="item">Compliance DB (SQLite)</text>
+  <text x="44" y="174" class="item">Ed25519 Private Key</text>
+  <text x="44" y="188" class="item">Litestream Sidecar</text>
+  <text x="44" y="206" class="item">MAVLink Signing Key</text>
+
+  <!-- TB3: Aircraft -->
+  <rect class="b-inner b3" x="400" y="64" width="350" height="200"/>
+  <text x="414" y="82" class="btitle" fill="#2e7d32">TB3: Aircraft (WiFi + RF)</text>
+  <text x="414" y="100" class="item">Pixhawk 6C (Flight Controller)</text>
+  <text x="414" y="114" class="item">Companion RPi (SSH hardened)</text>
+  <text x="414" y="128" class="item">ADS-B In Receiver (pingRX)</text>
+  <text x="414" y="142" class="item">Camera / Gimbal (RTSP)</text>
+  <text x="414" y="156" class="item">SiK 915 MHz Radio (AES-128)</text>
+  <text x="414" y="170" class="item">Remote ID Module (OpenDroneID)</text>
+  <text x="414" y="184" class="item">Anti-collision Strobe</text>
+  <text x="414" y="202" class="item">GPS (multi-constellation GNSS)</text>
+
+  <!-- TB4: Physical Dock -->
+  <rect class="b-inner b4" x="30" y="286" width="340" height="120"/>
+  <text x="44" y="304" class="btitle" fill="#c62828">TB4: Physical Dock</text>
+  <text x="44" y="322" class="item">ESP32 (ESPHome) — API encryption key</text>
+  <text x="44" y="336" class="item">Linear Actuator + Limit Switches</text>
+  <text x="44" y="350" class="item">Sensors (temp, humidity, smoke)</text>
+  <text x="44" y="364" class="item">Weather Station (anemometer, rain)</text>
+  <text x="44" y="378" class="item">Tamper Sensor</text>
+
+  <!-- TB5: Operator Devices -->
+  <rect class="b-inner b5" x="400" y="286" width="350" height="120"/>
+  <text x="414" y="304" class="btitle" fill="#e65100">TB5: Operator Devices</text>
+  <text x="414" y="322" class="item">Phone (push notifications, RPIC auth)</text>
+  <text x="414" y="336" class="item">Workstation (HA UI on :8123)</text>
+  <text x="414" y="350" class="item">RC Transmitter (manual backup)</text>
+  <text x="414" y="364" class="item">RPIC / Flight Coordinator</text>
+
+  <!-- TB6: External -->
+  <rect class="b-inner b6" x="30" y="424" width="720" height="72"/>
+  <text x="44" y="442" class="btitle" fill="#6a1b9a">TB6: External / Off-Network</text>
+  <text x="44" y="460" class="item">Litestream S3/GCS/NAS (immutable replication)</text>
+  <text x="310" y="460" class="item">Mobile Push (Apple/Google)</text>
+  <text x="540" y="460" class="item">RFC 3161 TSA</text>
+  <text x="44" y="478" class="item">ADS-B RF Environment (broadcast)</text>
+  <text x="310" y="478" class="item">FAA Remote ID Network</text>
+  <text x="540" y="478" class="item">ArduPilot SITL (dev only)</text>
+
+  <!-- Data flow arrows -->
+  <path d="M 200 264 L 200 284" class="flow"/>
+  <text x="208" y="278" class="flow-label">ESPHome API</text>
+
+  <path d="M 370 160 L 398 160" class="flow"/>
+  <text x="372" y="155" class="flow-label">MAVLink (signed)</text>
+
+  <path d="M 370 200 L 398 200" class="flow"/>
+  <text x="374" y="195" class="flow-label">RTSP video</text>
+
+  <path d="M 200 264 L 200 284" class="flow"/>
+
+  <path d="M 575 264 L 575 284" class="flow"/>
+  <text x="583" y="278" class="flow-label">Push / UI</text>
+
+  <path d="M 200 406 L 200 422" class="flow"/>
+  <text x="208" y="418" class="flow-label">Litestream</text>
+</svg>

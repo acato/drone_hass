@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 200" font-family="Inter, -apple-system, sans-serif" font-size="11">
+  <defs>
+    <style>
+      .st { rx: 8; ry: 8; stroke-width: 1.5; }
+      .off { fill: #ffebee; stroke: #c62828; }
+      .deg { fill: #fff9c4; stroke: #f57f17; }
+      .on { fill: #e8f5e9; stroke: #2e7d32; }
+      .lbl { font-weight: 600; font-size: 11px; text-anchor: middle; }
+      .slbl { font-size: 9px; fill: #616161; text-anchor: middle; }
+      .ed { fill: none; stroke: #757575; stroke-width: 1.2; marker-end: url(#ca); }
+      .ed-lbl { font-size: 8px; fill: #424242; }
+      .title { font-weight: 700; font-size: 14px; fill: #212121; }
+    </style>
+    <marker id="ca" markerWidth="6" markerHeight="4" refX="5" refY="2" orient="auto"><polygon points="0 0,6 2,0 4" fill="#757575"/></marker>
+  </defs>
+
+  <text x="300" y="22" text-anchor="middle" class="title">Connection / Heartbeat State Machine</text>
+
+  <rect class="st off" x="20" y="70" width="140" height="50"/>
+  <text x="90" y="90" class="lbl" fill="#c62828">DISCONNECTED</text>
+  <text x="90" y="106" class="slbl">MQTT: "offline"</text>
+  <text x="90" y="116" class="slbl">LWT fires if bridge dies</text>
+
+  <rect class="st on" x="230" y="70" width="140" height="50"/>
+  <text x="300" y="90" class="lbl" fill="#2e7d32">CONNECTED</text>
+  <text x="300" y="106" class="slbl">MQTT: "online"</text>
+  <text x="300" y="116" class="slbl">Heartbeat OK</text>
+
+  <rect class="st deg" x="440" y="70" width="140" height="50"/>
+  <text x="510" y="90" class="lbl" fill="#f57f17">HEARTBEAT_LOST</text>
+  <text x="510" y="106" class="slbl">MQTT: "degraded"</text>
+  <text x="510" y="116" class="slbl">3 missed beats</text>
+
+  <!-- DISCONNECTED -> CONNECTED -->
+  <line x1="160" y1="85" x2="228" y2="85" class="ed"/>
+  <text x="186" y="79" class="ed-lbl">heartbeat rx</text>
+
+  <!-- CONNECTED -> HEARTBEAT_LOST -->
+  <line x1="370" y1="85" x2="438" y2="85" class="ed"/>
+  <text x="395" y="79" class="ed-lbl">5s no heartbeat</text>
+
+  <!-- HEARTBEAT_LOST -> CONNECTED (resumes) -->
+  <path d="M 440 110 Q 400 140 370 110" class="ed"/>
+  <text x="396" y="138" class="ed-lbl">heartbeat resumes (&lt;15s)</text>
+
+  <!-- HEARTBEAT_LOST -> DISCONNECTED -->
+  <path d="M 440 115 Q 300 175 160 115" class="ed"/>
+  <text x="290" y="170" class="ed-lbl">15s total no heartbeat</text>
+
+  <!-- CONNECTED -> DISCONNECTED (error) -->
+  <path d="M 230 110 Q 180 140 160 110" class="ed"/>
+  <text x="186" y="144" class="ed-lbl">MAVSDK error</text>
+</svg>

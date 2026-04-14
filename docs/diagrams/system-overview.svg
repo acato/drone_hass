@@ -1,0 +1,168 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 720" font-family="Inter, -apple-system, sans-serif" font-size="12">
+  <defs>
+    <style>
+      .box { stroke-width: 2; rx: 8; ry: 8; }
+      .ha { fill: #e3f2fd; stroke: #1565c0; }
+      .bridge { fill: #fff3e0; stroke: #e65100; }
+      .aircraft { fill: #e8f5e9; stroke: #2e7d32; }
+      .dock { fill: #fce4ec; stroke: #c62828; }
+      .s3 { fill: #f3e5f5; stroke: #6a1b9a; }
+      .label { font-weight: 600; font-size: 13px; }
+      .sublabel { font-size: 11px; fill: #424242; }
+      .protocol { font-size: 10px; font-weight: 700; fill: #fff; }
+      .proto-bg { rx: 3; ry: 3; }
+      .arrow { stroke: #616161; stroke-width: 1.5; fill: none; marker-end: url(#arrowhead); }
+      .arrow-mqtt { stroke: #1565c0; }
+      .arrow-mavlink { stroke: #2e7d32; }
+      .arrow-rtsp { stroke: #e65100; }
+      .arrow-repl { stroke: #6a1b9a; stroke-dasharray: 6 3; }
+      .trigger { fill: #fafafa; stroke: #9e9e9e; stroke-width: 1.5; rx: 6; ry: 6; }
+    </style>
+    <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#616161"/>
+    </marker>
+    <marker id="arrow-blue" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#1565c0"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#2e7d32"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#e65100"/>
+    </marker>
+    <marker id="arrow-purple" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#6a1b9a"/>
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="400" y="24" text-anchor="middle" font-size="16" font-weight="700" fill="#212121">drone_hass System Architecture</text>
+
+  <!-- Alarm Sensor trigger -->
+  <rect class="trigger" x="20" y="100" width="120" height="50"/>
+  <text x="80" y="120" text-anchor="middle" class="label" font-size="11">Alarm Sensor</text>
+  <text x="80" y="134" text-anchor="middle" class="sublabel" font-size="10">PIR / Camera AI / Gate</text>
+
+  <!-- HOME ASSISTANT box -->
+  <rect class="box ha" x="180" y="50" width="400" height="200"/>
+  <text x="380" y="72" text-anchor="middle" class="label" fill="#1565c0">HOME ASSISTANT</text>
+
+  <!-- HA sub-components -->
+  <rect x="200" y="82" width="160" height="40" rx="4" fill="#bbdefb" stroke="#1565c0" stroke-width="1"/>
+  <text x="280" y="100" text-anchor="middle" class="sublabel" font-size="11" font-weight="600">Automation Engine</text>
+  <text x="280" y="114" text-anchor="middle" class="sublabel" font-size="9">Safety gates · Mission select</text>
+
+  <rect x="200" y="132" width="160" height="40" rx="4" fill="#bbdefb" stroke="#1565c0" stroke-width="1"/>
+  <text x="280" y="150" text-anchor="middle" class="sublabel" font-size="11" font-weight="600">drone_hass Integration</text>
+  <text x="280" y="164" text-anchor="middle" class="sublabel" font-size="9">Entities · Services · Config Flow</text>
+
+  <rect x="380" y="82" width="180" height="40" rx="4" fill="#bbdefb" stroke="#1565c0" stroke-width="1"/>
+  <text x="470" y="100" text-anchor="middle" class="sublabel" font-size="11" font-weight="600">Mosquitto Broker</text>
+  <text x="470" y="114" text-anchor="middle" class="sublabel" font-size="9">TLS · ACLs · LWT</text>
+
+  <rect x="380" y="132" width="180" height="40" rx="4" fill="#bbdefb" stroke="#1565c0" stroke-width="1"/>
+  <text x="470" y="150" text-anchor="middle" class="sublabel" font-size="11" font-weight="600">Media Server</text>
+  <text x="470" y="164" text-anchor="middle" class="sublabel" font-size="9">go2rtc · WebRTC/HLS</text>
+
+  <rect x="200" y="182" width="360" height="30" rx="4" fill="#bbdefb" stroke="#1565c0" stroke-width="1"/>
+  <text x="380" y="202" text-anchor="middle" class="sublabel" font-size="11">Camera · Sensors · Binary Sensors · Device Tracker · DAA Status</text>
+
+  <!-- Arrow: Alarm -> HA -->
+  <line x1="140" y1="125" x2="198" y2="102" class="arrow"/>
+
+  <!-- BRIDGE ADD-ON box -->
+  <rect class="box bridge" x="180" y="300" width="400" height="170"/>
+  <text x="380" y="322" text-anchor="middle" class="label" fill="#e65100">BRIDGE ADD-ON (Docker)</text>
+  <text x="380" y="336" text-anchor="middle" class="sublabel" font-size="9" fill="#bf360c">Starts before HA Core · Survives HA restarts</text>
+
+  <rect x="200" y="348" width="120" height="32" rx="4" fill="#ffe0b2" stroke="#e65100" stroke-width="1"/>
+  <text x="260" y="368" text-anchor="middle" class="sublabel" font-size="10">MAVLink Bridge</text>
+
+  <rect x="330" y="348" width="110" height="32" rx="4" fill="#ffe0b2" stroke="#e65100" stroke-width="1"/>
+  <text x="385" y="368" text-anchor="middle" class="sublabel" font-size="10">DAA Monitor</text>
+
+  <rect x="450" y="348" width="110" height="32" rx="4" fill="#ffe0b2" stroke="#e65100" stroke-width="1"/>
+  <text x="505" y="368" text-anchor="middle" class="sublabel" font-size="10">ComplianceGate</text>
+
+  <rect x="200" y="390" width="170" height="32" rx="4" fill="#ffe0b2" stroke="#e65100" stroke-width="1"/>
+  <text x="285" y="406" text-anchor="middle" class="sublabel" font-size="10">Compliance Recorder</text>
+  <text x="285" y="418" text-anchor="middle" class="sublabel" font-size="8">SQLite · Ed25519 · Hash Chain</text>
+
+  <rect x="380" y="390" width="180" height="32" rx="4" fill="#ffe0b2" stroke="#e65100" stroke-width="1"/>
+  <text x="470" y="406" text-anchor="middle" class="sublabel" font-size="10">Mission Manager</text>
+  <text x="470" y="418" text-anchor="middle" class="sublabel" font-size="8">Operational Area · Geofence</text>
+
+  <rect x="200" y="432" width="360" height="24" rx="4" fill="#ffe0b2" stroke="#e65100" stroke-width="1"/>
+  <text x="380" y="448" text-anchor="middle" class="sublabel" font-size="10">MAVSDK-Python (async) + aiomqtt</text>
+
+  <!-- S3 Immutable Storage -->
+  <rect class="box s3" x="640" y="370" width="140" height="60"/>
+  <text x="710" y="395" text-anchor="middle" class="label" font-size="11" fill="#6a1b9a">S3 Object Lock</text>
+  <text x="710" y="410" text-anchor="middle" class="sublabel" font-size="9">Litestream replication</text>
+  <text x="710" y="422" text-anchor="middle" class="sublabel" font-size="9">WORM · 5yr retention</text>
+
+  <!-- AIRCRAFT box -->
+  <rect class="box aircraft" x="180" y="520" width="280" height="140"/>
+  <text x="320" y="542" text-anchor="middle" class="label" fill="#2e7d32">AIRCRAFT</text>
+
+  <text x="200" y="562" class="sublabel" font-size="10">ArduPilot (Pixhawk 6C)</text>
+  <text x="200" y="576" class="sublabel" font-size="10">  AP_Avoidance · Firmware Geofence</text>
+  <text x="200" y="590" class="sublabel" font-size="10">  Failsafe · OpenDroneID</text>
+  <text x="200" y="608" class="sublabel" font-size="10">ADS-B In (pingRX)</text>
+  <text x="200" y="622" class="sublabel" font-size="10">Companion RPi + Camera (RTSP)</text>
+  <text x="200" y="640" class="sublabel" font-size="10">Anti-collision strobe</text>
+
+  <!-- PHYSICAL DOCK box -->
+  <rect class="box dock" x="500" y="520" width="220" height="140"/>
+  <text x="610" y="542" text-anchor="middle" class="label" fill="#c62828">PHYSICAL DOCK</text>
+
+  <text x="520" y="562" class="sublabel" font-size="10">ESPHome ESP32 Controller</text>
+  <text x="520" y="578" class="sublabel" font-size="10">  Lid · Sensors · Heater</text>
+  <text x="520" y="594" class="sublabel" font-size="10">Safety interlocks in firmware</text>
+  <text x="520" y="614" class="sublabel" font-size="10">Weather Station</text>
+  <text x="520" y="630" class="sublabel" font-size="10">  Anemometer · Rain Gauge</text>
+  <text x="520" y="646" class="sublabel" font-size="10">ADS-B Ground Rx (optional)</text>
+
+  <!-- Protocol labels (MQTT) -->
+  <rect class="proto-bg" x="355" y="256" width="50" height="18" fill="#1565c0"/>
+  <text x="380" y="269" text-anchor="middle" class="protocol">MQTT</text>
+
+  <!-- Protocol labels (MAVLink) -->
+  <rect class="proto-bg" x="280" y="480" width="70" height="18" fill="#2e7d32"/>
+  <text x="315" y="493" text-anchor="middle" class="protocol">MAVLink</text>
+
+  <!-- Protocol labels (RTSP) -->
+  <rect class="proto-bg" x="480" y="480" width="46" height="18" fill="#e65100"/>
+  <text x="503" y="493" text-anchor="middle" class="protocol">RTSP</text>
+
+  <!-- Arrows: HA <-> Bridge (MQTT) -->
+  <line x1="380" y1="250" x2="380" y2="298" class="arrow arrow-mqtt" marker-end="url(#arrow-blue)"/>
+
+  <!-- Arrows: Bridge -> Aircraft (MAVLink) -->
+  <line x1="315" y1="470" x2="315" y2="518" class="arrow arrow-mavlink" marker-end="url(#arrow-green)"/>
+
+  <!-- Arrows: Aircraft -> Media Server (RTSP) -->
+  <path d="M 460 560 L 503 490" class="arrow arrow-rtsp" fill="none" marker-end="url(#arrow-orange)"/>
+
+  <!-- Arrows: Bridge -> S3 (Litestream) -->
+  <line x1="562" y1="400" x2="638" y2="400" class="arrow arrow-repl" marker-end="url(#arrow-purple)"/>
+
+  <!-- Legend -->
+  <rect x="20" y="680" width="760" height="30" rx="4" fill="#fafafa" stroke="#e0e0e0"/>
+  <line x1="40" y1="695" x2="70" y2="695" stroke="#1565c0" stroke-width="2"/>
+  <text x="75" y="699" class="sublabel" font-size="10">MQTT</text>
+  <line x1="130" y1="695" x2="160" y2="695" stroke="#2e7d32" stroke-width="2"/>
+  <text x="165" y="699" class="sublabel" font-size="10">MAVLink</text>
+  <line x1="230" y1="695" x2="260" y2="695" stroke="#e65100" stroke-width="2"/>
+  <text x="265" y="699" class="sublabel" font-size="10">RTSP</text>
+  <line x1="310" y1="695" x2="340" y2="695" stroke="#6a1b9a" stroke-width="2" stroke-dasharray="6 3"/>
+  <text x="345" y="699" class="sublabel" font-size="10">Litestream Replication</text>
+  <rect x="500" y="686" width="12" height="12" rx="2" fill="#e3f2fd" stroke="#1565c0" stroke-width="1"/>
+  <text x="518" y="697" class="sublabel" font-size="10">HA</text>
+  <rect x="545" y="686" width="12" height="12" rx="2" fill="#fff3e0" stroke="#e65100" stroke-width="1"/>
+  <text x="563" y="697" class="sublabel" font-size="10">Bridge</text>
+  <rect x="610" y="686" width="12" height="12" rx="2" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1"/>
+  <text x="628" y="697" class="sublabel" font-size="10">Aircraft</text>
+  <rect x="680" y="686" width="12" height="12" rx="2" fill="#fce4ec" stroke="#c62828" stroke-width="1"/>
+  <text x="698" y="697" class="sublabel" font-size="10">Dock</text>
+</svg>

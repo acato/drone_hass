@@ -22,44 +22,7 @@ Your alarm triggers. Thirty seconds later, the drone is airborne, flying a prede
 
 ## How it works
 
-```
-                          ┌─────────────────────────────────────────────┐
-                          │            HOME ASSISTANT                   │
-                          │                                             │
-  Alarm Sensor ──────────►│  Automation: safety gates ──► Notification  │
-  (PIR, camera AI,        │    wind/rain/battery/GPS/      (Part 107)   │
-   gate contact)          │    DAA/dock/airspace            or auto     │
-                          │         │                       (Part 108)  │
-                          │         ▼                                   │
-                          │  drone_hass Integration                     │
-                          │    entities ◄──── MQTT ────► services       │
-                          │    camera  ◄─── RTSP ──┐                   │
-                          └─────────────┬──────────┤───────────────────┘
-                                   MQTT │          │ RTSP
-                          ┌─────────────┴──────────┤───────────────────┐
-                          │  Bridge Add-on         │    (Docker)       │
-                          │                        │                   │
-                          │  MAVLink-MQTT Bridge   │                   │
-                          │  DAA Monitor (ADS-B)   │                   │
-                          │  ComplianceGate        │                   │
-                          │  Compliance Recorder ──┼──► S3 (immutable) │
-                          │  Mission Manager       │                   │
-                          └────────────┬───────────┘───────────────────┘
-                              MAVLink  │          ▲ RTSP
-                          ┌────────────┴──────────┴───────────────────┐
-                          │           AIRCRAFT                        │
-                          │  ArduPilot (Pixhawk) + ADS-B In          │
-                          │  Companion RPi + Camera (RTSP native)    │
-                          │  Firmware geofence + failsafe (independent│
-                          │  of bridge — safety runs on the FC)      │
-                          └───────────────────────────────────────────┘
-                          ┌───────────────────────────────────────────┐
-                          │           PHYSICAL DOCK                   │
-                          │  ESPHome ESP32: lid, sensors, heater     │
-                          │  Safety interlocks in firmware, not HA   │
-                          │  Weather station: anemometer + rain gauge│
-                          └───────────────────────────────────────────┘
-```
+![System Architecture](docs/diagrams/system-overview.svg)
 
 The add-on and integration communicate **exclusively via MQTT**. The bridge owns the drone. The integration owns the HA experience. The dock runs its own safety logic.
 

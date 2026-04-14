@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 780" font-family="Inter, -apple-system, sans-serif" font-size="11">
+  <defs>
+    <style>
+      .step { rx: 6; ry: 6; stroke-width: 1.5; }
+      .trigger { fill: #ffebee; stroke: #c62828; }
+      .check { fill: #fff3e0; stroke: #e65100; }
+      .auth { fill: #f3e5f5; stroke: #6a1b9a; }
+      .action { fill: #e8f5e9; stroke: #2e7d32; }
+      .notify { fill: #e3f2fd; stroke: #1565c0; }
+      .compliance { fill: #eceff1; stroke: #546e7a; }
+      .diamond { stroke-width: 1.5; }
+      .lbl { font-weight: 600; font-size: 10px; text-anchor: middle; }
+      .slbl { font-size: 8.5px; fill: #616161; text-anchor: middle; }
+      .ed { fill: none; stroke: #757575; stroke-width: 1.2; marker-end: url(#wa); }
+      .ed-no { stroke: #c62828; marker-end: url(#wa-r); }
+      .ed-lbl { font-size: 8px; fill: #424242; }
+      .title { font-weight: 700; font-size: 14px; fill: #212121; }
+      .mode-tag { font-size: 8px; font-weight: 700; rx: 3; ry: 3; }
+    </style>
+    <marker id="wa" markerWidth="6" markerHeight="4" refX="5" refY="2" orient="auto"><polygon points="0 0,6 2,0 4" fill="#757575"/></marker>
+    <marker id="wa-r" markerWidth="6" markerHeight="4" refX="5" refY="2" orient="auto"><polygon points="0 0,6 2,0 4" fill="#c62828"/></marker>
+  </defs>
+
+  <text x="220" y="20" text-anchor="middle" class="title">Alarm Response Workflow</text>
+
+  <!-- 1. Alarm Trigger -->
+  <rect class="step trigger" x="100" y="36" width="240" height="34"/>
+  <text x="220" y="52" class="lbl" fill="#c62828">Alarm Sensor Triggered</text>
+  <text x="220" y="64" class="slbl">PIR / Camera AI / Gate Contact</text>
+
+  <!-- Arrow -->
+  <line x1="220" y1="70" x2="220" y2="86" class="ed"/>
+
+  <!-- 2. Safety Gates -->
+  <rect class="step check" x="70" y="88" width="300" height="64"/>
+  <text x="220" y="104" class="lbl" fill="#e65100">Safety Gate Checks</text>
+  <text x="220" y="118" class="slbl">Wind &lt; 15mph  |  No rain  |  Battery &gt; 30%</text>
+  <text x="220" y="130" class="slbl">GPS lock  |  DAA healthy  |  Airspace clear</text>
+  <text x="220" y="142" class="slbl">Dock connected  |  Drone connected  |  Not airborne</text>
+
+  <!-- Gate fail -->
+  <line x1="370" y1="120" x2="410" y2="120" class="ed-no"/>
+  <text x="394" y="114" class="ed-lbl" fill="#c62828">FAIL</text>
+  <text x="394" y="132" class="ed-lbl" fill="#c62828">Abort</text>
+
+  <!-- Arrow -->
+  <line x1="220" y1="152" x2="220" y2="168" class="ed"/>
+
+  <!-- 3. Compliance: log safety gate -->
+  <rect class="step compliance" x="100" y="170" width="240" height="28"/>
+  <text x="220" y="189" class="lbl" fill="#546e7a">Log: safety_gate record</text>
+
+  <line x1="220" y1="198" x2="220" y2="214" class="ed"/>
+
+  <!-- 4. Open Dock Lid -->
+  <rect class="step action" x="100" y="216" width="240" height="28"/>
+  <text x="220" y="235" class="lbl" fill="#2e7d32">Open Dock Lid</text>
+
+  <line x1="220" y1="244" x2="220" y2="260" class="ed"/>
+
+  <!-- 5. Mode Branch -->
+  <polygon points="220,262 280,290 220,318 160,290" fill="#f3e5f520" stroke="#6a1b9a" stroke-width="1.5"/>
+  <text x="220" y="294" class="lbl" fill="#6a1b9a" font-size="9">Mode?</text>
+
+  <!-- Part 107 branch -->
+  <line x1="160" y1="290" x2="50" y2="290" class="ed"/>
+  <text x="100" y="284" class="ed-lbl">Part 107</text>
+
+  <!-- RPIC Notification -->
+  <rect class="step auth" x="10" y="310" width="160" height="54"/>
+  <text x="90" y="328" class="lbl" fill="#6a1b9a">Push to RPIC</text>
+  <text x="90" y="342" class="slbl">Nonce challenge</text>
+  <text x="90" y="354" class="slbl">[LAUNCH]  [IGNORE]</text>
+
+  <line x1="50" y1="290" x2="50" y2="308" class="ed"/>
+
+  <!-- Wait for tap -->
+  <rect class="step auth" x="10" y="380" width="160" height="34"/>
+  <text x="90" y="396" class="lbl" fill="#6a1b9a">Wait for RPIC Tap</text>
+  <text x="90" y="408" class="slbl">120s timeout</text>
+
+  <line x1="90" y1="364" x2="90" y2="378" class="ed"/>
+
+  <!-- Timeout fail -->
+  <line x1="170" y1="397" x2="210" y2="397" class="ed-no"/>
+  <text x="196" y="390" class="ed-lbl" fill="#c62828">timeout</text>
+
+  <!-- Auth success -->
+  <line x1="90" y1="414" x2="90" y2="440" class="ed"/>
+  <rect class="step compliance" x="10" y="442" width="160" height="28"/>
+  <text x="90" y="461" class="lbl" fill="#546e7a">Log: rpic_authorized</text>
+
+  <path d="M 90 470 Q 90 490 220 490" class="ed"/>
+
+  <!-- Part 108 branch -->
+  <line x1="280" y1="290" x2="370" y2="290" class="ed"/>
+  <text x="330" y="284" class="ed-lbl">Part 108</text>
+
+  <rect class="step action" x="310" y="310" width="120" height="48"/>
+  <text x="370" y="328" class="lbl" fill="#2e7d32">Auto-authorize</text>
+  <text x="370" y="342" class="slbl">FC on duty?</text>
+  <text x="370" y="352" class="slbl">DAA healthy?</text>
+
+  <line x1="370" y1="290" x2="370" y2="308" class="ed"/>
+
+  <rect class="step compliance" x="310" y="374" width="120" height="28"/>
+  <text x="370" y="393" class="lbl" fill="#546e7a">Log: auto_auth</text>
+
+  <line x1="370" y1="358" x2="370" y2="372" class="ed"/>
+
+  <!-- Notify FC -->
+  <rect class="step notify" x="310" y="418" width="120" height="34"/>
+  <text x="370" y="436" class="lbl" fill="#1565c0">Notify FC</text>
+  <text x="370" y="448" class="slbl">[ABORT] [RTH]</text>
+
+  <line x1="370" y1="402" x2="370" y2="416" class="ed"/>
+
+  <path d="M 370 452 Q 370 490 220 490" class="ed"/>
+
+  <!-- Converge: Launch -->
+  <rect class="step action" x="100" y="498" width="240" height="34"/>
+  <text x="220" y="514" class="lbl" fill="#2e7d32">Start Stream + Execute Mission</text>
+  <text x="220" y="526" class="slbl">RTSP + MAVLink waypoint upload</text>
+
+  <line x1="220" y1="490" x2="220" y2="496" class="ed"/>
+
+  <line x1="220" y1="532" x2="220" y2="548" class="ed"/>
+
+  <!-- Mission executing -->
+  <rect class="step action" x="100" y="550" width="240" height="34"/>
+  <text x="220" y="566" class="lbl" fill="#2e7d32">Mission Executing</text>
+  <text x="220" y="578" class="slbl">Live video · Telemetry · DAA monitoring</text>
+
+  <line x1="220" y1="584" x2="220" y2="600" class="ed"/>
+
+  <!-- Mission complete -->
+  <rect class="step action" x="100" y="602" width="240" height="28"/>
+  <text x="220" y="621" class="lbl" fill="#2e7d32">Mission Complete -> RTL -> Land</text>
+
+  <line x1="220" y1="630" x2="220" y2="646" class="ed"/>
+
+  <!-- Stop stream, close dock -->
+  <rect class="step action" x="100" y="648" width="240" height="28"/>
+  <text x="220" y="667" class="lbl" fill="#2e7d32">Stop Stream · Close Dock Lid</text>
+
+  <line x1="220" y1="676" x2="220" y2="692" class="ed"/>
+
+  <!-- Final compliance -->
+  <rect class="step compliance" x="60" y="694" width="320" height="40"/>
+  <text x="220" y="712" class="lbl" fill="#546e7a">Compliance Record: Full Flight Log</text>
+  <text x="220" y="726" class="slbl">Outcome · DAA events · Weather · Max alt/speed · Duration</text>
+
+  <!-- Mode tags -->
+  <rect x="12" y="306" width="40" height="14" rx="3" fill="#6a1b9a"/>
+  <text x="32" y="316" class="mode-tag" fill="#fff" text-anchor="middle">107</text>
+
+  <rect x="368" y="306" width="40" height="14" rx="3" fill="#2e7d32"/>
+  <text x="388" y="316" class="mode-tag" fill="#fff" text-anchor="middle">108</text>
+</svg>
