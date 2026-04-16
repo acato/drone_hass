@@ -113,41 +113,67 @@ class DroneMqttCoordinator:
         self._entities: list[DronEntity] = []
         self._unsubscribe: list[Callable] = []
         self._pending_commands: dict[str, asyncio.Future] = {}
+        self._ready: asyncio.Event = asyncio.Event()
 
     async def async_start(self):
-        """Subscribe to all drone topics under this drone_id."""
+        """Subscribe to all drone topics, then mark coordinator ready."""
         unsub = await mqtt.async_subscribe(
             self.hass,
             f"drone_hass/{self.drone_id}/#",
             self._on_message,
             qos=1,
+            encoding="utf-8",            # decode bytes -> str for the handler
         )
         self._unsubscribe.append(unsub)
+        self._ready.set()                # gate service calls until subscribed
 
-    async def _on_message(self, msg):
-        """Route MQTT message to state bucket, notify entities."""
+    # Topics whose payloads are plain strings, never JSON. Keep this tuple in
+    # sync with the wire contract in docs/mavlink-mqtt-contract.md.
+    _NON_JSON_TOPIC_SUFFIXES = ("/state/connection",)   # LWT publishes "offline"/"online"
+
+    @callback
+    def _on_message(self, msg: ReceiveMessage) -> None:
+        """Route MQTT message to state bucket, notify entities.
+
+        Sync @callback because the body does no I/O. Per-message fan-out to all
+        entities is intentionally simple: at ~30 entities x 10 Hz telemetry that
+        is ~300 cheap state-machine writes per second. Per-entity topic routing
+        is a known optimisation deferred until profiling justifies it.
+        """
         topic = msg.topic
-        payload = json.loads(msg.payload)
+        raw: str = msg.payload                          # str because of encoding="utf-8"
 
-        # Route by topic suffix
-        if topic.endswith("/telemetry/flight"):
-            self.data["flight"] = payload
-        elif topic.endswith("/telemetry/battery"):
-            self.data["battery"] = payload
-        # ... etc for all topic suffixes
+        if any(topic.endswith(s) for s in self._NON_JSON_TOPIC_SUFFIXES):
+            # Plain-string payload (LWT, simple state).
+            parts = topic.split("/")
+            # drone_hass/{drone_id}/state/connection -> parts[-2]=state, parts[-1]=connection
+            self.data.setdefault(parts[-2], {})[parts[-1]] = raw
+        else:
+            # JSON payload — guard against malformed publishes from a misbehaving
+            # bridge or a third-party publisher with broker write access.
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                _LOGGER.warning("Malformed JSON on %s: %r", topic, raw[:200])
+                return
 
-        # Check for command responses (correlation ID)
-        elif "/command/" in topic and topic.endswith("/response"):
-            cmd_id = payload.get("id")
-            if cmd_id in self._pending_commands:
-                self._pending_commands[cmd_id].set_result(payload)
+            if topic.endswith("/telemetry/flight"):
+                self.data["flight"] = payload
+            elif topic.endswith("/telemetry/battery"):
+                self.data["battery"] = payload
+            # ... etc for all topic suffixes
+            elif "/command/" in topic and topic.endswith("/response"):
+                cmd_id = payload.get("id")
+                fut = self._pending_commands.get(cmd_id)
+                if fut and not fut.done():
+                    fut.set_result(payload)
 
-        # Notify all registered entities
         for entity in self._entities:
             entity.async_write_ha_state()
 
     async def async_send_command(self, action, params=None, timeout=10):
         """Publish command with correlation ID, await response."""
+        await self._ready.wait()                # do not publish before subscription is live
         cmd_id = str(uuid.uuid4())
         future = self.hass.loop.create_future()
         self._pending_commands[cmd_id] = future

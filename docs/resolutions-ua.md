@@ -81,11 +81,96 @@ os.chmod('/data/compliance/mavlink_signing.key', 0o600)
 connection = mavutil.mavlink_connection('udp:<companion_ip>:14540', source_system=245)
 connection.setup_signing(signing_key, sign_outgoing=True, allow_unsigned_rxcsum=False)
 
-# All subsequent messages are automatically signed
-connection.mav.param_set_send(target_system=1, target_component=1, 
-                              param_id='SYSID_MYGCS', param_value=245, 
+# All subsequent outbound messages are automatically signed
+connection.mav.param_set_send(target_system=1, target_component=1,
+                              param_id='SYSID_MYGCS', param_value=245,
                               param_type=mavutil.mavlink.MAV_PARAM_TYPE_INT32)
 ```
+
+#### Defence-in-depth: drop unsigned safety-critical messages
+
+ArduPilot 4.x AP_Signing accepts certain MAVLink messages **unsigned by default**, including `SYSTEM_TIME` (#2) — to allow clock injection from a fresh GCS that has not yet exchanged the signing key. That default is unsafe for drone_hass: an injector on VLAN 20 can skew the FC RTC, breaking compliance timestamps and MAVLink replay protection. The same exposure exists for several other safety-critical messages.
+
+The bridge enforces signed-only on the full safety-critical set at the MAVLink layer via pymavlink's `signing.allow_unsigned_callback`. Any unsigned packet on the drop list is rejected before it reaches the FC, logged as a compliance event, and incremented on a Prometheus counter so silent drops cannot hide a sustained attack.
+
+```python
+# Apply on BOTH the SiK primary and the WiFi secondary connection. SiK trust
+# is a defence-in-depth assumption, not a guarantee — Holybro SiK v3 firmware
+# has had AES key-recovery CVEs.
+
+UNSIGNED_DROP_MSGIDS = {
+    # Time / sync — clock-skew attacks
+    mavutil.mavlink.MAVLINK_MSG_ID_SYSTEM_TIME,                  # 2
+    mavutil.mavlink.MAVLINK_MSG_ID_TIMESYNC,                     # 111
+
+    # Authentication / signing handshake — never accept unsigned
+    mavutil.mavlink.MAVLINK_MSG_ID_AUTH_KEY,                     # 7
+    mavutil.mavlink.MAVLINK_MSG_ID_SETUP_SIGNING,                # 256
+
+    # GCS hijack family
+    mavutil.mavlink.MAVLINK_MSG_ID_CHANGE_OPERATOR_CONTROL,      # 5
+    mavutil.mavlink.MAVLINK_MSG_ID_CHANGE_OPERATOR_CONTROL_ACK,  # 6
+
+    # Parameter writes / reads — pre-empt the param-monitor RTL (ATK-FW-01)
+    mavutil.mavlink.MAVLINK_MSG_ID_PARAM_SET,                    # 23
+    mavutil.mavlink.MAVLINK_MSG_ID_PARAM_REQUEST_READ,           # 20
+
+    # EKF / home position — silent geofence bypass via origin shift
+    mavutil.mavlink.MAVLINK_MSG_ID_SET_GPS_GLOBAL_ORIGIN,        # 48
+    mavutil.mavlink.MAVLINK_MSG_ID_SET_HOME_POSITION,            # 179
+
+    # GPS / RTK — corrects EKF position; injection = drift attack
+    mavutil.mavlink.MAVLINK_MSG_ID_GPS_RTCM_DATA,                # 233
+
+    # Mission family — bridge owns this path; defence-in-depth
+    mavutil.mavlink.MAVLINK_MSG_ID_MISSION_COUNT,                # 44
+    mavutil.mavlink.MAVLINK_MSG_ID_MISSION_ITEM,                 # 39
+    mavutil.mavlink.MAVLINK_MSG_ID_MISSION_ITEM_INT,             # 73
+    mavutil.mavlink.MAVLINK_MSG_ID_MISSION_CLEAR_ALL,            # 45
+    mavutil.mavlink.MAVLINK_MSG_ID_MISSION_SET_CURRENT,          # 41
+
+    # Commands — COMMAND_ACK gates execution but unsigned COMMAND_LONG can
+    # still flood the queue (DoS) before the bridge sees it
+    mavutil.mavlink.MAVLINK_MSG_ID_COMMAND_LONG,                 # 76
+    mavutil.mavlink.MAVLINK_MSG_ID_COMMAND_INT,                  # 75
+
+    # Mode / RC override — arming-equivalent
+    mavutil.mavlink.MAVLINK_MSG_ID_SET_MODE,                     # 11
+    mavutil.mavlink.MAVLINK_MSG_ID_RC_CHANNELS_OVERRIDE,         # 70
+
+    # Telemetry rate control — re-routes streams
+    mavutil.mavlink.MAVLINK_MSG_ID_MESSAGE_INTERVAL,             # 511
+}
+
+UNSIGNED_DROP_COUNTER = Counter(
+    'drone_hass_unsigned_dropped_total',
+    'Unsigned safety-critical MAVLink packets dropped',
+    ['msgid', 'link'],                                           # link = sik|wifi
+)
+
+def install_unsigned_filter(connection, link_name):
+    """Reject any unsigned packet whose msgid is on the drop list. Fail-closed
+    on parse errors. Returns True to allow, False to drop."""
+    def allow_unsigned_callback(self, msgId):
+        if msgId in UNSIGNED_DROP_MSGIDS:
+            UNSIGNED_DROP_COUNTER.labels(msgid=msgId, link=link_name).inc()
+            log.warning("Dropping unsigned safety-critical msgid=%d on link=%s",
+                        msgId, link_name)
+            emit_compliance_event(
+                type='unsigned_msg_dropped',
+                msgid=msgId, link=link_name,
+                source='bridge_internal',
+            )
+            return False                                         # drop
+        return True                                              # allow non-safety unsigned
+    connection.mav.signing.allow_unsigned_callback = allow_unsigned_callback
+
+# Install on both transports.
+install_unsigned_filter(sik_connection, link_name='sik')
+install_unsigned_filter(wifi_connection, link_name='wifi')
+```
+
+**Operational note:** if the FC SYSTEM_TIME is genuinely cold (RTC battery dead, post-reboot at 1980-01-01), the *first* SYSTEM_TIME push from the companion will arrive before MAVLink signing has been mutually established. The bridge handles this by sending the initial SYSTEM_TIME via a direct serial bootstrap on the companion (out-of-band from the broker) before the SiK link is brought up. After signing is live, all SYSTEM_TIME on either link must be signed.
 
 #### Residual Risk
 
@@ -102,131 +187,20 @@ connection.mav.param_set_send(target_system=1, target_component=1,
 - Records appear authentic in the compliance database
 - **Severity:** Critical
 
-**Resolution: Defense in depth for key management**
+**Resolution:** see `resolutions-ha.md` Recommendation R-08 (Ed25519 Key Protection) — authoritative implementation. Earlier revisions of this section described a plaintext-PEM design that accepted "key in HA backups" as residual risk; that design has been superseded.
 
-This resolution implements multiple layers of key protection, acknowledging that self-hosted systems cannot be tamper-proof.
+**Summary of the current design** (full detail in R-08):
 
-#### Implementation Steps
+- Ed25519 seed material is wrapped with **scrypt + AES-256-GCM** (memory-hard KDF, AEAD with `drone_id` in AAD) before it ever touches disk.
+- Two storage modes: `tpm_sealed` (default if TPM 2.0 present) auto-unseals on boot via a TPM-sealed KEK bound to PCR 7; `passphrase_only` prompts via Ingress on every restart.
+- Backup blob is always passphrase-wrapped (TPM seal is host-bound, never backed up). Stolen backup faces scrypt N=2^17 — defeats GPU/ASIC bruteforce.
+- Operator passphrase enforced via zxcvbn (min 16 chars, score ≥ 3, breach-corpus check); failed-unseal lockout (3 attempts × exponential backoff); compliance events on every unseal success/failure.
+- Genesis fingerprint recorded out-of-band (paper, password manager, attorney email) for chain anchor verification.
+- Litestream replication to Object-Lock S3 (3-yr COMPLIANCE retention) plus MinIO secondary.
+- Chain verification on startup AND daily (Ed25519 + SHA-256 hash chain + OpenTimestamps proof walk).
+- Recovery tool `unwrap_signing_key.py` ships standalone for off-bridge restore.
 
-1. **Key Generation and Storage**
-   - Generate 32-byte Ed25519 private key on first bridge install: `Ed25519PrivateKey.generate()` (from cryptography library)
-   - Store at `/data/compliance/keys/signing_key.pem`, permissions `0600` (readable only by bridge)
-   - Store public key separately at `/data/compliance/keys/signing_key.pub`, permissions `0644` (world-readable for verification)
-   - Format: PEM (PKCS#8) with no encryption (key material itself is the secret)
-
-2. **Key Fingerprint Registration (Proof of Existence)**
-   - Compute fingerprint: SHA-256 hash of public key, first 16 hex characters
-   - Log as compliance record #1 at first install with type `key_fingerprint_registration`
-   - Display in bridge Ingress UI (HA web interface)
-   - **Operator Action:** Instructed to record fingerprint externally:
-     - Email to self with timestamp
-     - Print and sign
-     - Notarize with a timestamp authority
-     - This creates an external, independent record that the key existed at install time
-
-3. **Backup Warning**
-   - Bridge startup logs warning: `"Ed25519 signing key is included in HA backups. Ensure backups are encrypted."`
-   - Document in README: "HA backups contain the compliance signing key. Encrypt and store securely."
-   - Recommend separate encryption of backup files (e.g., GPG, age)
-
-4. **Mandatory Litestream for Part 108 Mode**
-   - Bridge refuses to start in Part 108 mode without active Litestream replication
-   - Ensures compliance data has off-device backup before high-consequence operations
-   - Startup check:
-     ```python
-     if OPERATION_MODE == "PART_108":
-         if not litestream_active():
-             raise RuntimeError("Part 108 requires active Litestream replication")
-     ```
-
-5. **Immutable Off-Device Storage (S3 Object Lock)**
-   - Litestream replication target: S3 bucket with Object Lock enabled
-   - Lock mode: COMPLIANCE (cannot be bypassed even by bucket owner)
-   - Retention period: 5 years (covers FAA record-keeping requirement)
-   - Even if attacker deletes local DB and removes the key, S3 Object Lock bucket contains immutable records
-
-6. **Chain Verification on Startup**
-   - Bridge startup: walk entire compliance record chain
-   - Verify each record's Ed25519 signature using public key
-   - Verify SHA-256 hash chain (each record includes hash of previous)
-   - If any signature fails or hash breaks: log critical anomaly, prevent Part 108 flight
-   - Daily verification job: repeat chain check
-
-#### Code Reference (Bridge Side)
-
-```python
-from cryptography.hazmat.primitives.asymmetric import ed25519
-from cryptography.hazmat.primitives import serialization
-import hashlib
-
-# Generate on first install
-private_key = ed25519.Ed25519PrivateKey.generate()
-private_pem = private_key.private_bytes(
-    encoding=serialization.Encoding.PEM,
-    format=serialization.PrivateFormat.PKCS8,
-    encryption_algorithm=serialization.NoEncryption()
-)
-with open('/data/compliance/keys/signing_key.pem', 'wb') as f:
-    f.write(private_pem)
-os.chmod('/data/compliance/keys/signing_key.pem', 0o600)
-
-public_key = private_key.public_key()
-public_pem = public_key.public_bytes(
-    encoding=serialization.Encoding.PEM,
-    format=serialization.PublicFormat.SubjectPublicKeyInfo
-)
-with open('/data/compliance/keys/signing_key.pub', 'wb') as f:
-    f.write(public_pem)
-
-# Fingerprint registration (record #1)
-public_key_hash = hashlib.sha256(public_pem).hexdigest()[:16]
-fingerprint_record = {
-    'type': 'key_fingerprint_registration',
-    'fingerprint': public_key_hash,
-    'created_at': datetime.utcnow().isoformat(),
-    'operator_action_required': 'Record this fingerprint externally (email, print, notarize)'
-}
-db.compliance_records.insert(fingerprint_record)
-
-# Sign a record
-def sign_record(record, private_key):
-    record_json = json.dumps(record, separators=(',', ':'), sort_keys=True)
-    signature = private_key.sign(record_json.encode())
-    record['signature'] = signature.hex()
-    return record
-
-# Verify chain on startup
-def verify_chain(db, public_key):
-    records = db.compliance_records.find().sort('_id', 1)
-    prev_hash = None
-    for record in records:
-        # Verify signature
-        record_copy = dict(record)
-        signature_hex = record_copy.pop('signature')
-        signature = bytes.fromhex(signature_hex)
-        record_json = json.dumps(record_copy, separators=(',', ':'), sort_keys=True)
-        try:
-            public_key.verify(signature, record_json.encode())
-        except Exception as e:
-            raise IntegrityError(f"Signature verification failed for record {record['_id']}: {e}")
-        
-        # Verify hash chain
-        record_hash = hashlib.sha256(record_json.encode()).hexdigest()
-        if prev_hash and record.get('prev_hash') != prev_hash:
-            raise IntegrityError(f"Hash chain broken at record {record['_id']}")
-        prev_hash = record_hash
-```
-
-#### Residual Risk
-
-- **Fundamental limitation:** Operator controls the signing key and deployment environment
-- A modified bridge codebase could write false records with valid signatures
-- Self-hosted compliance system provides **tamper-evidence**, not tamper-proof protection
-- **Mitigation:** 
-  - Open-source code is auditable by FAA or third-party auditors
-  - Git history shows all modifications
-  - FAA can require running unmodified tagged releases
-  - Remote ID broadcasts provide independent, operator-uncontrollable corroboration
+**Residual risk:** the operator controls deployment, so a modified bridge codebase could write false records with valid signatures. Self-hosted compliance is **tamper-evident**, not tamper-proof. Mitigated by Apache 2.0 source auditability, cosign-verified images at install (R-27), Remote ID independent corroboration of flight existence, and OpenTimestamps anchoring of the chain to Bitcoin block-time (a forward-dating attack cannot produce an OTS proof claiming an earlier block-time than the calendar server actually issued).
 
 ---
 
@@ -465,14 +439,14 @@ Test replay protection:
 
 ---
 
-### ATK-MAV-05: SiK 915 MHz Radio Eavesdropping
+### ATK-MAV-05: SiK 915 MHz Radio Eavesdropping (PRIMARY C2)
 
 **Threat Summary:**
-- SiK radios transmit MAVLink in the clear on 915 MHz ISM band
-- Attacker with SDR ($25-$300) can receive telemetry and inject commands
-- **Severity:** Medium (requires specialized equipment, SiK is backup link only)
+- SiK radios transmit MAVLink in the clear on 915 MHz ISM band by default
+- Attacker with SDR ($25-$300) can receive telemetry and, with a transmit-capable SDR, inject commands
+- **Severity: HIGH** — after the C2 inversion (architecture.md §6.3), SiK is the *primary* safety link, not a backup. AES-128 + MAVLink v2 signing is mandatory; failure to enable either is a flight-blocker, not a hardening recommendation.
 
-**Resolution:** Enable SiK AES-128 encryption
+**Resolution:** Enable SiK AES-128 encryption *and* MAVLink v2 signing on the SiK serial endpoint. The bridge refuses to arm if either is unconfigured at startup.
 
 #### SiK Radio Configuration
 
@@ -498,38 +472,29 @@ ATI7
 
 #### Bridge Integration
 
-Configure SiK serial link in bridge code:
+The SiK ground module is plugged into the bridge host's USB (`/dev/ttyUSB0`). Per architecture.md §6.3 the radio module lives indoors with LMR-400 to an outdoor antenna on the eave. SiK is the primary MAVLink path — there is no failover *to* SiK; the WiFi-secondary path is opportunistic for video and debugging only.
 
 ```python
 import serial
 
-# Open SiK radio serial link
+# Open SiK radio serial link — primary C2.
 sik_serial = serial.Serial(
-    port='/dev/ttyUSB0',  # Companion computer serial port
+    port='/dev/ttyUSB0',
     baudrate=57600,
-    timeout=1.0
+    timeout=1.0,
 )
-
-# Create MAVLink connection over SiK
 sik_connection = mavutil.mavlink_connection(f'serial:{sik_serial.port}:{sik_serial.baudrate}')
 
-# Setup signing on SiK link (same key as WiFi)
+# MAVLink v2 signing on the primary path is MANDATORY.
 sik_connection.setup_signing(signing_key, sign_outgoing=True, allow_unsigned_rxcsum=False)
 
-# Failover logic: if WiFi MAVLink heartbeats are lost for >5 seconds, switch to SiK
-last_wifi_heartbeat = time.time()
-while True:
-    # Check WiFi connection health
-    wifi_msg = wifi_connection.recv_match(type='HEARTBEAT', blocking=False)
-    if wifi_msg:
-        last_wifi_heartbeat = time.time()
-    
-    # Failover to SiK if WiFi is down
-    if time.time() - last_wifi_heartbeat > 5.0:
-        active_connection = sik_connection
-        log.warning("WiFi link lost, switched to SiK radio")
-    else:
-        active_connection = wifi_connection
+# Optional opportunistic WiFi MAVLink for ground-station GUIs only. The bridge
+# does not promote this path to safety-critical; ComplianceGate reads SiK
+# telemetry only.
+wifi_connection = mavutil.mavlink_connection('udp:0.0.0.0:14550')   # opportunistic
+wifi_connection.setup_signing(signing_key, sign_outgoing=True, allow_unsigned_rxcsum=False)
+
+active_connection = sik_connection                                  # always SiK for safety path
 ```
 
 #### Required SiK Parameters
@@ -542,8 +507,9 @@ while True:
 
 #### Residual Risk
 
-- SiK link is backup only; primary link is WiFi with signing enabled
-- Encryption + MAVLink signing provides defense in depth
+- SiK is the **primary** safety C2 link; WiFi is the secondary video path with no safety responsibility (architecture.md §6.3).
+- AES-128 + MAVLink v2 signing raises the eavesdropping/injection bar substantially but does not produce link characterisation evidence. A documented link-budget test (RSSI/SNR vs distance over the operational area, with foliage in leaf and out, and during rain) is required for Part 108 means-of-compliance evidence.
+- Future hardening: a Microhard pDDL2450 (~$3-4k) provides AES-256 + characterised throughput and is the upgrade path if SiK's range/throughput envelope or Part 108 final-rule means-of-compliance demands it.
 
 ---
 
@@ -554,7 +520,7 @@ while True:
 - Disable geofence: `FENCE_ENABLE=0`
 - Disable ADS-B avoidance: `AVD_ENABLE=0`
 - Disable GCS failsafe: `FS_GCS_ENABLE=0`
-- Change RTL altitude to dangerous value: `RTL_ALT=30000` (300m instead of default 35m)
+- Change RTL altitude to dangerous value: `RTL_ALT=30000` (300m instead of safe value 50m), or to a value below the 30 m tree canopy
 - **Severity:** High
 
 **Resolution:** Continuous parameter monitoring and verification
@@ -569,8 +535,13 @@ SAFETY_PARAMETERS = {
     'FENCE_ENABLE': 1,        # Geofence enabled
     'FENCE_TYPE': 7,          # Circle + Polygon boundaries
     'AVD_ENABLE': 1,          # ADS-B avoidance enabled
-    'FS_GCS_ENABLE': 1,       # RTL on GCS link loss
-    'RTL_ALT': 35,            # Return to 35m AGL
+    'FS_GCS_ENABLE': 2,       # Continue mission to next safe waypoint then RTL.
+                              # Tuned for SiK 915 MHz primary C2 (FHSS dwell + retry
+                              # variance); FS_GCS_ENABLE=1 was tuned for low-jitter WiFi
+                              # primary and false-triggered RTL on normal SiK fades.
+    'FS_GCS_TIMEOUT': 15,     # 15 s tolerance — matches SiK link characterisation.
+    'RTL_ALT': 50,            # Return to 50m AGL (20 m margin over 30 m tree canopy)
+    'FENCE_ALT_MAX': 60,      # Firmware fence ceiling (5 m above operational ceiling)
     'WP_RADIUS': 500,         # Waypoint acceptance radius (cm)
     'FS_EKF_ACTION': 1,       # RTL on EKF failure
     'FS_BATT_ENABLE': 1,      # Battery failsafe enabled
@@ -610,7 +581,7 @@ class ParameterMonitor:
                 continue
             
             # Re-read critical parameters
-            for param_name in ['FENCE_ENABLE', 'AVD_ENABLE', 'FS_GCS_ENABLE', 'RTL_ALT']:
+            for param_name in ['FENCE_ENABLE', 'AVD_ENABLE', 'FS_GCS_ENABLE', 'RTL_ALT', 'FENCE_ALT_MAX']:
                 msg = self.connection.recv_match(type='PARAM_VALUE', blocking=False, timeout=2)
                 if not msg:
                     continue
@@ -623,13 +594,45 @@ class ParameterMonitor:
                     )
                     
                     if is_armed:
-                        # Trigger RTL immediately
+                        # Trigger RTL immediately via COMMAND_LONG with ACK retry.
+                        # Note: pymavlink's MAV_MODE_RTL constant does not exist;
+                        # set_mode(MAV_MODE_RTL) would raise AttributeError and
+                        # leave the airframe in AUTO. Use MAV_CMD_NAV_RTL.
                         log.critical("Drone armed during tampering. Executing RTL.")
-                        self.connection.set_mode(mavutil.mavlink.MAV_MODE_RTL)
+                        self._send_command_with_ack(
+                            mavutil.mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH,
+                            0, 0, 0, 0, 0, 0, 0,    # params 1-7 unused
+                        )
                     else:
                         # Block launch
                         log.critical("Blocking launch due to parameter tampering.")
                         raise SecurityViolation("Safety parameters compromised")
+
+    def _send_command_with_ack(self, command_id, *params,
+                               timeout_s=1.0, retries=3):
+        """COMMAND_LONG send with ACK verification and bounded retry.
+
+        Safe to call with blocking=True because the parameter monitor runs in
+        its own daemon thread (see thread setup at the bottom of this section).
+        Asyncio callers must wrap this in `loop.run_in_executor()`.
+        """
+        for attempt in range(retries):
+            self.connection.mav.command_long_send(
+                self.connection.target_system,
+                self.connection.target_component,
+                command_id,
+                attempt,                # confirmation = attempt count
+                *params,
+            )
+            ack = self.connection.recv_match(
+                type='COMMAND_ACK', blocking=True, timeout=timeout_s
+            )
+            if ack and ack.command == command_id:
+                if ack.result == mavutil.mavlink.MAV_RESULT_ACCEPTED:
+                    return True
+                if ack.result != mavutil.mavlink.MAV_RESULT_TEMPORARILY_REJECTED:
+                    raise CommandRejected(f"cmd {command_id} -> {ack.result}")
+        raise CommandTimeout(f"cmd {command_id} no ACK after {retries} tries")
 
 # Instantiate and run monitor
 monitor = ParameterMonitor(mavlink_connection, SAFETY_PARAMETERS)
@@ -648,8 +651,10 @@ monitor_thread.start()
 | `FENCE_ENABLE` | 0 | 1 | 0 (disabled by default) | **Must = 1** to enforce geofence |
 | `FENCE_TYPE` | 0 | 7 | 0 | **Should = 7** (circle + polygon boundaries) |
 | `AVD_ENABLE` | 0 | 1 | 0 | **Must = 1** to enable ADS-B avoidance |
-| `FS_GCS_ENABLE` | 0 | 5 | 0 | **Must = 1 or 5** (RTL on link loss) |
-| `RTL_ALT` | 0 | 32767 (cm) | 1500 (15m) | **Typical = 3500** (35m AGL, safe height) |
+| `FS_GCS_ENABLE` | 0 | 5 | 0 | **= 2** (continue then RTL) — SiK 915 MHz primary C2 has higher latency variance than WiFi; `=1` (immediate RTL) false-triggers on normal FHSS fades |
+| `FS_GCS_TIMEOUT` | 1 | 30 | 5 (s) | **= 15** s — matches SiK link characterisation, prevents nuisance RTL from add-on container scheduling jitter |
+| `RTL_ALT` | 0 | 32767 (cm) | 1500 (15m) | **= 5000** (50m AGL — 20 m margin over 30 m tree canopy) |
+| `FENCE_ALT_MAX` | 1000 | 32767 (cm) | 10000 (100m) | **= 6000** (60m — 5 m above operational ceiling, see architecture.md §11.3 altitude invariant) |
 | `WP_RADIUS` | 0 | 32767 (cm) | 200 (2m) | Waypoint acceptance radius |
 | `FS_EKF_ACTION` | 0 | 2 | 0 | **Should = 1** (RTL on EKF failure) |
 | `FS_BATT_ENABLE` | 0 | 2 | 0 | **Must = 1 or 2** (battery failsafe) |
@@ -664,8 +669,11 @@ Bridge refuses to arm if any safety parameter is incorrect. Example startup sequ
 [PARAM] FENCE_ENABLE = 1 ✓
 [PARAM] FENCE_TYPE = 7 ✓
 [PARAM] AVD_ENABLE = 1 ✓
-[PARAM] FS_GCS_ENABLE = 1 ✓
-[PARAM] RTL_ALT = 35 ✓
+[PARAM] FS_GCS_ENABLE = 2 ✓
+[PARAM] FS_GCS_TIMEOUT = 15 ✓
+[PARAM] RTL_ALT = 50 ✓
+[PARAM] FENCE_ALT_MAX = 60 ✓
+[PARAM] Altitude invariant (tree_max < RTL_ALT < ceiling < FENCE_ALT_MAX): OK
 [PARAM] All checks passed
 [MONITOR] Starting continuous parameter monitor (interval=30s)
 [READY] Ready for flight
@@ -1215,27 +1223,74 @@ def detect_gps_spoofing():
 #### Bridge Spoofing Detection Logic
 
 ```python
+# ArduCopter custom_mode IDs (from libraries/AP_Vehicle/AP_Vehicle.h)
+COPTER_MODE_ALT_HOLD = 2
+COPTER_MODE_BRAKE = 17
+CUSTOM_MODE_ENABLED = mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED  # = 1
+
 def handle_suspected_spoofing(is_armed, operational_area):
     """
-    If spoofing is suspected while airborne:
-    LAND (not RTL) because RTL uses GPS which may be spoofed.
+    GPS spoofing response. Two-stage degradation:
+
+      Stage 1 — BRAKE (custom_mode 17): halts forward motion within ~2 s using
+                EKF position. Bounded drift before the spoof can pull the
+                aircraft off property.
+      Stage 2 — if EKF innovations remain elevated after 2 s, fall back to
+                ALT_HOLD (custom_mode 2): abandons horizontal position control
+                entirely and holds altitude on baro + IMU only. ALT_HOLD will
+                drift with wind. Under Part 107 the VLOS RPIC takes the sticks;
+                under Part 108 this is the documented flyaway-risk path.
+
+      Stage 3 — alert RPIC over the existing MQTT push channel for manual
+                recovery. We do not auto-descend: NAV_LAND uses the corrupted
+                EKF position and would land somewhere unpredictable.
+
+    pymavlink's MAV_MODE_LAND constant does not exist; set_mode(MAV_MODE_LAND)
+    would raise AttributeError. Use MAV_CMD_DO_SET_MODE with a custom_mode.
     """
-    
-    if suspected_spoofing and is_armed:
-        log.critical("GPS spoofing suspected. Executing LAND (not RTL).")
-        
-        # Send LAND command instead of RTL
-        # RTL relies on GPS for return position, so if GPS is spoofed, RTL is unsafe
-        connection.set_mode(mavutil.mavlink.MAV_MODE_LAND)
-        
-        # Log as compliance/security event
-        db.compliance_records.insert_one({
-            'type': 'security_event',
-            'event': 'gps_spoofing_suspected',
-            'action_taken': 'LAND',
-            'timestamp': datetime.utcnow().isoformat(),
-            'source': 'bridge_internal'
-        })
+    if not (suspected_spoofing and is_armed):
+        return
+
+    log.critical("GPS spoofing suspected. Stage 1: BRAKE.")
+    connection.mav.command_long_send(
+        connection.target_system, connection.target_component,
+        mavutil.mavlink.MAV_CMD_DO_SET_MODE, 0,
+        CUSTOM_MODE_ENABLED, COPTER_MODE_BRAKE,
+        0, 0, 0, 0, 0,
+    )
+    connection.recv_match(type='COMMAND_ACK', blocking=True, timeout=1)
+
+    time.sleep(2.0)
+    if ekf_innovations_still_bad():     # bridge already monitors EKF_STATUS_REPORT
+        log.critical("EKF still degraded. Stage 2: ALT_HOLD (drift expected).")
+        connection.mav.command_long_send(
+            connection.target_system, connection.target_component,
+            mavutil.mavlink.MAV_CMD_DO_SET_MODE, 0,
+            CUSTOM_MODE_ENABLED, COPTER_MODE_ALT_HOLD,
+            0, 0, 0, 0, 0,
+        )
+        connection.recv_match(type='COMMAND_ACK', blocking=True, timeout=1)
+        action_taken = 'BRAKE_then_ALT_HOLD'
+    else:
+        action_taken = 'BRAKE'
+
+    # Stage 3: alert RPIC via the existing bridge MQTT publisher (same channel
+    # as authorize_flight push notifications). Do NOT spawn a parallel alert
+    # path — fragmenting the compliance log loses correlation.
+    publish_rpic_alert(
+        severity='critical',
+        event='gps_spoofing_suspected',
+        action_taken=action_taken,
+        note='Manual recovery required; aircraft may drift if in ALT_HOLD',
+    )
+
+    db.compliance_records.insert_one({
+        'type': 'security_event',
+        'event': 'gps_spoofing_suspected',
+        'action_taken': action_taken,
+        'timestamp': datetime.utcnow().isoformat(),
+        'source': 'bridge_internal',
+    })
 ```
 
 #### Residual Risk
@@ -1270,10 +1325,12 @@ This is covered in detail above under High Resolutions section (ATK-FW-03).
 | `FENCE_ENABLE` | uint8 | 0 | 1 | 0 | **1** | Enable geofence enforcement | ATK-MAV-01, ATK-MAV-04, ATK-FW-01 |
 | `FENCE_TYPE` | uint8 | 0 | 7 | 0 | **7** | Circle + Polygon boundaries | ATK-MAV-01 |
 | `AVD_ENABLE` | uint8 | 0 | 1 | 0 | **1** | Enable ADS-B avoidance | ATK-MAV-04, ATK-FW-01 |
-| `FS_GCS_ENABLE` | uint8 | 0 | 5 | 0 | **1** | RTL on GCS link loss | ATK-MAV-03, ATK-FW-01 |
+| `FS_GCS_ENABLE` | uint8 | 0 | 5 | 0 | **2** | Continue then RTL on GCS link loss (tuned for SiK 915 MHz primary C2) | ATK-MAV-03, ATK-FW-01 |
+| `FS_GCS_TIMEOUT` | uint16 | 1 | 30 | 5 (s) | **15** | GCS link-loss tolerance (matches SiK link characterisation) | ATK-MAV-03, ATK-FW-01 |
 | `FS_EKF_ACTION` | uint8 | 0 | 2 | 0 | **1** | RTL on EKF failure | ATK-FW-01 |
 | `FS_BATT_ENABLE` | uint8 | 0 | 2 | 0 | **1** | Battery failsafe enabled | ATK-FW-01 |
-| `RTL_ALT` | uint16 | 0 | 32767 (cm) | 1500 | **3500** | Return altitude (35m AGL) | ATK-FW-01 |
+| `RTL_ALT` | uint16 | 0 | 32767 (cm) | 1500 | **5000** | Return altitude (50m AGL — 20 m above tree canopy) | ATK-FW-01 |
+| `FENCE_ALT_MAX` | uint16 | 1000 | 32767 (cm) | 10000 | **6000** | Firmware fence ceiling (60m — 5 m above operational ceiling) | ATK-FW-01 |
 | `WP_RADIUS` | uint16 | 0 | 32767 (cm) | 200 | **500** | Waypoint acceptance radius (5m) | ATK-FW-01 |
 | `SYSID_MYGCS` | uint8 | 1 | 255 | 255 | **245** | Bridge system ID | ATK-MAV-01, ATK-MAV-04 |
 
@@ -1311,7 +1368,7 @@ This is covered in detail above under High Resolutions section (ATK-FW-03).
 |-------------|------------|-----------|-----------------|-----------------|--------|
 | ATK-MAV-01 | MAVLink Command Injection | MAVLink v2 signing + VLAN | Bridge + Network | SYSID_MYGCS=245 | Critical |
 | ATK-MAV-02 | MAVLink Replay Attack | v2 signing timestamp | pymavlink | (automatic) | High |
-| ATK-MAV-03 | WiFi Deauth | WPA3-SAE + SiK backup | Network + Firmware | FS_GCS_ENABLE=1 | Medium |
+| ATK-MAV-03 | WiFi Deauth (secondary video link only after C2 inversion) | WPA3-SAE; primary C2 unaffected | Network | n/a — C2 unaffected, video degraded only | Low |
 | ATK-MAV-04 | Rogue GCS | MAVLink signing + firewall | Bridge + Network | SYSID_MYGCS=245 | Critical |
 | ATK-MAV-05 | SiK Eavesdropping | AES-128 encryption | SiK radio config | (AT commands) | High |
 | ATK-COMP-01 | Key Extraction | Key fingerprint + Litestream | Bridge + S3 Object Lock | (N/A) | Critical |
@@ -1343,10 +1400,13 @@ This is covered in detail above under High Resolutions section (ATK-FW-03).
    - FENCE_ENABLE = 1 ✓
    - FENCE_TYPE = 7 ✓
    - AVD_ENABLE = 1 ✓
-   - FS_GCS_ENABLE = 1 ✓
+   - FS_GCS_ENABLE = 2 ✓
+   - FS_GCS_TIMEOUT = 15 ✓
    - FS_EKF_ACTION = 1 ✓
    - FS_BATT_ENABLE = 1 ✓
-   - RTL_ALT = 3500 ✓
+   - RTL_ALT = 5000 ✓
+   - FENCE_ALT_MAX = 6000 ✓
+   - Altitude invariant (tree_max < RTL_ALT < ceiling < FENCE_ALT_MAX): OK ✓
    - SYSID_MYGCS = 245 ✓
    - GPS_GNSS_MODE = 99 ✓
    - All checks passed ✓

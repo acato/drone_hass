@@ -273,6 +273,89 @@ CLOSED → OPENING → OPEN → CLOSING → CLOSED
 - Charger power relay cut on smoke/overtemp (hardware, not software)
 - Motion timeout: if actuator runs too long, stop and flag fault
 - Watchdog timer: if ESP32 firmware hangs, fail to safe state (lid closed, charger off)
+- **Fail-open override**: if MQTT lost > 60 s while aircraft is airborne, lid opens regardless of other state — see "Connectivity and fail-open lid policy" below
+
+#### Connectivity (PoE primary, WiFi fallback)
+
+The dock's connectivity is **wired Cat6 PoE++ from the house switch to the dock**, not WiFi-primary. WiFi-only had a fatal failure mode: WiFi drops mid-flight → dock cannot receive `cmd/lid/open` → drone has no landing target. Wired Ethernet eliminates this single point of failure.
+
+| Hardware | Spec |
+|---|---|
+| House switch port | **PoE++ 802.3bt Type 3 (60 W)** on managed switch with VLAN 10 untagged. PoE+ (30 W) was originally specified but the budget — ESP32 + W5500 + TFT (~5 W) + lid motor peak (15 W) + heater (25 W steady) + charger contactor coil — peaks at ~50 W; PoE+ would brown out. |
+| In-conduit cable | Cat6 (or Cat6A if >50 m), pulled in the same trench/conduit as existing dock power |
+| Surge protection | Ubiquiti ETH-SP-G2 surge arrestor at **both** ends of the Cat6 run (~$25 each). WA outdoor runs see lightning-induced transients. |
+| At-dock splitter | PoE-Texas GBT-12V60W (PoE++ in, 12 V DC out + Ethernet out) |
+| Dock controller | ESP32-WROOM-32U + W5500 SPI Ethernet (hardware TCP/IP offload, rock-solid ESPHome support) |
+| WiFi fallback | Same ESP32-WROOM-32U external antenna; only used if Ethernet link down |
+
+ESPHome YAML must declare `ethernet:` block **before** `wifi:` so the dock comes up wired-first and only attempts WiFi on Ethernet link-loss:
+
+```yaml
+ethernet:
+  type: W5500
+  clk_pin: GPIO18
+  mosi_pin: GPIO23
+  miso_pin: GPIO19
+  cs_pin: GPIO5
+  interrupt_pin: GPIO4
+  reset_pin: GPIO2
+  manual_ip:
+    static_ip: 10.10.10.20
+    gateway: 10.10.10.1
+    subnet: 255.255.255.0
+
+wifi:                     # fallback only — dock prefers Ethernet
+  ssid: !secret dock_wifi_ssid
+  password: !secret dock_wifi_password
+  fast_connect: true
+  power_save_mode: none
+```
+
+#### Fail-open lid policy (mandatory firmware behaviour)
+
+The dock **opens the lid** if either condition holds while the dock has been disconnected from MQTT for more than 60 s:
+
+1. **Live-airborne**: bridge's last `state/airborne` (retained) was `true` AND that retained value is less than 90 s old (60 s connectivity loss + 30 s telemetry stale margin).
+2. **Recently-closed bootstrap**: lid was commanded closed within the last 20 minutes (covers the "launched then comms died before the dock saw `airborne=true`" case where the retained-message latch never reached the dock).
+
+An open lid in weather is recoverable. A closed lid blocking an emergency landing is not. The weather-precipitation interlock that gates *normal* lid opens is **bypassed** for the live-airborne fail-open case — a wet dock interior is an acceptable cost. Precipitation interlock *does* apply to the recently-closed bootstrap path: if the drone was already on the ground at takeoff but the dock missed `airborne=true`, opening into a downpour for no reason is silly.
+
+**Bridge-side requirement** (added to `mavlink-mqtt-contract.md`):
+
+```yaml
+# drone_hass/{drone_id}/state/airborne — retained, QoS 1
+# Bridge publishes on every state change.
+# "airborne" = armed AND (relative_altitude_m > 2.0 OR EKF in_air flag set).
+# NOT raw MAV_STATE_ACTIVE — that fires during armed-on-ground.
+```
+
+**Compliance event** logged on every fail-open engage AND recovery:
+
+```json
+{
+  "type": "dock_fail_open_engaged",
+  "mqtt_last_seen_ts": "...",
+  "airborne_retained_ts": "...",
+  "lid_last_closed_ts": "...",
+  "trigger": "live_airborne" | "recently_closed_bootstrap",
+  "last_known_position": {...},
+  "last_known_battery_pct": 47,
+  "weather_at_engage": {...},
+  "lid_open_ts": "..."
+}
+```
+
+**Operator notifications** — critical-priority push (not silent), on both engage and recovery:
+- Engage: "DOCK FAIL-OPEN ENGAGED — investigate. Aircraft last seen [position, battery]."
+- Recovery: "Dock lid manually closed by [operator] at [time]."
+
+**Auto-reclose timeout**: 30 minutes. Prevents indefinite open state once MQTT recovers.
+
+**Audible / visual alarm at the dock during fail-open**: piezo buzzer continuous tone + the TFT switches to a red "FAIL-OPEN — DRONE LANDING — STAND CLEAR" full-screen indicator.
+
+**Physical FORCE OPEN button** — hardware pull-up to a debounced GPIO that drives the lid motor through a firmware path that **bypasses MQTT entirely**. RPIC last-resort recovery if all comms are dead. Mounted next to the dock, mushroom-head, weatherproof, ~$3 part. Pressing FORCE OPEN also fires the same compliance event with `trigger: "physical_button"`.
+
+**Part 108 CONOPS:** the fail-open behaviour must be documented in the operational means-of-compliance (lost-link contingency mitigation). Verify ArduPilot RTL altitude (per §11.3 altitude invariant) clears the open lid mechanism with margin, otherwise the drone could descend into a partially-open lid mid-cycle.
 
 **Entities exposed to HA:**
 
@@ -290,6 +373,63 @@ CLOSED → OPENING → OPEN → CLOSING → CLOSED
 | `switch.dock_fan` | Switch | Ventilation fan relay |
 | `switch.dock_charger_power` | Switch | Smart outlet / relay for charger |
 | `sensor.dock_power_status` | Sensor | Mains/UPS status |
+| `sensor.dock_authorize_display` | Sensor | Current `challenge_display` shown on the dock TFT (or `IDLE` / `EXPIRED` / `INVALID_HMAC`) — exposed for HA dashboard correlation |
+
+#### Authorization cross-verification display
+
+For the commit-and-reveal authorization flow (resolutions-ha.md ATK-HA-02), the dock displays the bridge's `challenge_display` on a small outdoor-readable screen so the RPIC can cross-verify against (a) the phone push notification and (b) the HA Lovelace card. Mismatch on any of the three sources = REFUSE TO AUTHORIZE. This is the property that defeats a `ha_user` who tries to inject a rogue push notification — the OLED still shows the bridge's real value.
+
+| Hardware | Spec | Why |
+|---|---|---|
+| Display | ST7789 240×240 IPS TFT, SPI, ~$8 | Daylight-readable behind polycarbonate (SSD1306 OLED washes out in direct sun). LDR on ADC drives PWM backlight for night auto-dim. |
+| Mount | Dock exterior face oriented toward typical RPIC standing zone, ~1.2 m off ground, angled ~15° upward, with anti-reflective polycarbonate window | Operator must not have to look down into a horizontal surface in bright light |
+| Audible alert | Piezo buzzer on `output: ledc` (RTTTL) | Two short beeps on challenge appearance, one long on expiry. Operators are not always staring at the dock. |
+
+**Default display state** (most of the time): "VERIFY MODE INACTIVE — DO NOT AUTHORIZE" in large text. The OLED only switches to the challenge view when a *valid signed request* arrives within the last 30 s. Missing display is an explicit REFUSE signal, not an ambiguous one — operator habituation to "OLED is glitchy, ignore it" is the failure mode this defeats.
+
+**Trust hardening (all three required, none of these are pick-one):**
+
+1. **Mosquitto ACL** — only the `bridge_user` clientid can publish to `drone_hass/+/command/authorize_flight/request`. `ha_user` is read-only on that topic. Already in resolutions-ha.md ATK-MQTT-01 ACL; verify the dock subscriber is gated to bridge-publishes-only.
+2. **HMAC-SHA256** over `challenge_display + commitment + expires_at + monotonic_nonce`, signed with a key provisioned to the dock at install time (separate from the bridge↔phone HMAC key). Dock refuses to display unsigned or replayed payloads (monotonic nonce check).
+3. **Loud failure UI** — see "Default display state" above.
+
+**Clear logic** (in priority order, applied in firmware):
+1. Bridge publishes `authorize_flight/response` (success or deny) — clear immediately.
+2. Local timer reaches `expires_at` — clear immediately. **The local timer is the safety net; never trust the bridge to always send a clear.**
+3. Explicit `drone_hass/{drone_id}/dock/display/clear` topic for operator abort.
+
+**Heartbeat:** the dock publishes `drone_hass/{drone_id}/dock/heartbeat` at 1 Hz. The bridge refuses to arm if dock heartbeat is stale (no silent third-source loss).
+
+**Compliance log:** all three verification sources (phone notification ack, HA card render, dock display confirm) are logged into the compliance DB with the `challenge_display` value each one observed. Auditors verify all three values match for any approved authorization.
+
+**ESPHome YAML sketch** (full file in `dock/esphome/dock_controller.yaml`):
+
+```yaml
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO23
+
+display:
+  - platform: st7789v
+    cs_pin: GPIO5
+    dc_pin: GPIO16
+    reset_pin: GPIO17
+    update_interval: 250ms       # responsive countdown
+    lambda: |-
+      if (id(auth_pending) && id(auth_hmac_valid) && (id(now_secs) < id(expires_at))) {
+        it.printf(0,   0, id(font_small), "MISSION");
+        it.printf(0,  18, id(font_med),   "%s", id(mission_id).c_str());
+        it.printf(0,  60, id(font_small), "VERIFY CODE");
+        it.printf(0,  78, id(font_xl),    "%s", id(challenge_display).c_str());
+        it.printf(0, 200, id(font_small), "Expires in %ds",
+                  id(expires_at) - id(now_secs));
+      } else {
+        it.fill(COLOR_RED);                 // loud-failure default
+        it.printf(0,  60, id(font_med), "VERIFY MODE");
+        it.printf(0,  90, id(font_med), "INACTIVE");
+        it.printf(0, 140, id(font_small), "DO NOT AUTHORIZE");
+      }
+```
 
 ### 5.6 Placement
 
@@ -313,8 +453,41 @@ UPS is important: brownouts during storms are common — exactly when you want t
 |-----------|---------|-------------------|
 | Local weather station (anemometer + rain gauge) | Automated go/no-go with measured data | Operational safety documentation; not API-derived |
 | ADS-B ground receiver (FlightAware PiAware or similar) | Extended traffic awareness beyond airborne receiver | Supplements onboard DAA, earlier warning |
-| Directional WiFi antenna | Reliable C2 link to aircraft | Part 108 emphasizes C2 link integrity |
-| SiK 915 MHz telemetry radio (backup) | Redundant C2 link if WiFi degrades | C2 redundancy |
+| SiK 915 MHz telemetry radio (PRIMARY C2) | Bounded-latency MAVLink command + telemetry between bridge and Pixhawk | Part 108 emphasizes a *characterised* C2 link; SiK + FHSS + AES-128 + MAVLink v2 signing has a known link budget. WiFi as primary fails this characterisation under multipath, foliage, and DFS evictions. |
+| WiFi 5 GHz on dedicated drone SSID (SECONDARY) | High-bandwidth path for RTSP video and opportunistic MAVLink TCP | Non-safety-critical; degrades gracefully. Mission continues on SiK alone. |
+| RC transmitter (always-on manual override) | RPIC takes the sticks anytime regardless of bridge state | RC failsafe → RTL via firmware |
+
+### 5.9 RF Channel Plan
+
+The aircraft, dock, RC, and house networks share three crowded ISM bands. Without a documented plan, ELRS desenses SiK, drone WiFi DFS-evicts mid-flight, and ESPHome dock loses MQTT during takeoff. This section pins channels, powers, and coexistence rules.
+
+| Band | User | Power / mode | WA-relevant constraints | Coexistence notes |
+|---|---|---|---|---|
+| 1090 MHz | ADS-B In RX (uAvionix pingRX Pro) | RX only | passive | no emissions; never a coexistence source |
+| 978 MHz | UAT ADS-B RX | RX only | passive | as above |
+| 915 MHz ISM (902-928 MHz) | SiK primary C2, FHSS, AES-128 + MAVLink v2 signing | up to 30 dBm conducted per FCC Part 15.247 (1 W). Holybro/mRobotics SiK is 100 mW (20 dBm) at antenna port; with LMR-400 (~2 dB run loss) + 6 dBi outdoor antenna ≈ 24 dBm EIRP | **Do not use Crossfire 915 MHz for RC** — desenses the SiK receiver even with FHSS separation. Z-Wave 908.42 MHz sits 6.5 MHz below the SiK band edge and coexists in practice — call it out so future Z-Wave additions are reviewed. |
+| 2.4 GHz channel 1 (2401-2423 MHz) | ESPHome dock WiFi (ESP32 fixed channel) | 14 dBm (default) | n/a | Channel 1 chosen for slight isolation from BLE adv channel 39 (2480) used by OpenDroneID. Dock WiFi is fallback only — PoE Ethernet is primary (per §5.5 dock connectivity). |
+| 2.4 GHz, hopping 2400-2480 | ELRS RC manual override | up to 1 W (30 dBm) per Part 15.247 FHSS; typically 250 mW for line-of-sight ops within VLOS | Push house WiFi off 2.4 GHz entirely (or guest-only). ELRS will degrade 2.4 GHz WiFi during flight; that is expected and acceptable since the dock has PoE primary. |
+| 2.4 GHz Bluetooth + WiFi MAC layer | OpenDroneID Remote ID broadcast | per FAA Part 89 broadcast Remote ID rule | declared via ArduPilot OpenDroneID native support (4.4+) | **Standard Remote ID strongly recommended for Part 108; Broadcast Module operationally insufficient for BVLOS** (control-station location not reliably transmitted by broadcast modules; most USS/UTM acceptance criteria assume Standard RID). Broadcast Module remains legal under Part 89 for Part 107 ops today. |
+| 5 GHz channels 149/153/157/161 (UNII-3) | Drone WiFi SSID, video only, dedicated AP | up to 30 dBm | **Non-DFS** — chosen to prevent radar evictions interrupting video mid-flight | Lock channel statically (no auto-selection); do not allow band steering. House WiFi pinned away from these channels. PolyPhaser N-type DC-block lightning arrestor (~$60) on the outdoor 5 GHz feed alongside the 915 MHz arrestor — WA convergence-zone storm season is real. |
+| 5 GHz channels 36-48, 100-144 | House WiFi (UNII-1, UNII-2A, UNII-2C with DFS) | 23-30 dBm | DFS allowed for house, not for drone | Separate physical AP from drone SSID. |
+| 6 GHz LPI / Standard Power with AFC | Future upgrade path for drone video | per FCC 6 GHz rules; WA allows Standard Power outdoor with AFC | Clean spectrum, no coexistence with current load. ESP32-C6 is the SBC-class 6 GHz path. Defer until video uplink demands it. |
+
+#### Aircraft antenna placement
+
+- **915 MHz SiK** and **2.4 GHz ELRS RX** antennas separated by **≥50 cm** on the aircraft. Bands are ~1.5 GHz apart so no fundamental conflict, but near-field coupling at <50 cm desenses both.
+- **5 GHz video antenna** mounted at least 30 cm from the GPS module — 5 GHz harmonics can pollute the GPS L1 receiver if antennas are co-located.
+- **Remote ID broadcast antenna** (BLE/WiFi) is integrated into the OpenDroneID transmitter module; mount the module on the airframe top to avoid attenuation by frame and battery.
+
+#### Channel selection procedure
+
+Static assignment. If the operator brings up a new neighbour AP that takes channel 149, the manual fallback is 153 → 157 → 161; document the choice in the operations log. No automatic channel selection on the drone SSID — automation introduces non-determinism the safety case cannot accept.
+
+#### Dock-specific RF guidance
+
+- **Disable Bluetooth on the dock ESP32** (`CONFIG_BT_ENABLED=n` if custom; ESPHome `bluetooth_proxy` off). The dock has no BT use case and active BT scanning/advertising collides with OpenDroneID BLE broadcasts at close range during takeoff/landing.
+- Route the dock's IPEX antenna feed away from PoE magnetics and any switching supplies; ferrite on the PoE cable entry to the enclosure.
+- ESPHome YAML must declare `ethernet:` block **before** `wifi:` so the dock comes up wired-first and only attempts WiFi as fallback.
 
 ---
 
@@ -351,15 +524,18 @@ MAVLink eliminates the entire proprietary translation layer. The bridge becomes 
 | Frame + motors + ESCs + props | Holybro X500 V2 ARF kit | $280-$350 |
 | Flight controller | Pixhawk 6C or CubePilot Cube Orange+ | $200-$400 |
 | GPS (primary) | Holybro M10 or Here3 (RTK-capable) | $50-$150 |
-| Telemetry radio (backup C2) | SiK 915 MHz | $50 |
+| Telemetry radio (PRIMARY C2) | SiK 915 MHz pair (mRobotics or Holybro), with MAVLink v2 signing + AES-128 (`ATS15=1`); ground module installed indoors with LMR-400 to outdoor antenna on the eave (avoids weatherproofing the bridge host) | $80 |
+| Telemetry antenna (outdoor, ground side) | 915 MHz vertical dipole (Comet GP-3 or similar), N-female bulkhead through eave; PolyPhaser IS-50UX-C2 lightning arrestor between antenna and feedline entry | $60 |
+| Spare SiK pair (safety-critical hardware) | One bench unit on the shelf; air and ground modules are the safety C2 path | $80 |
 | Companion computer | Raspberry Pi 5 (4GB+) | $60-$100 |
 | Camera + gimbal | Siyi A8 Mini (3-axis, 4K, RTSP native) | $300-$400 |
 | Batteries | 4S 5200mAh LiPo x3 | $120-$200 |
 | Anti-collision strobe | Firehouse Technology ARC II or uAvionix | $30-$80 |
 | Remote ID module | uAvionix ping Remote ID | $100-$150 |
 | ADS-B In receiver | uAvionix pingRX Pro | $250-$350 |
-| WiFi adapter (companion) | Alfa AWUS036ACS + directional antenna at dock | $40-$80 |
-| RC transmitter (manual backup) | RadioMaster TX16S + ELRS receiver | $150-$250 |
+| WiFi adapter (companion) — secondary, video-only | Alfa AWUS036ACS, 5 GHz non-DFS only (149/153/157/161 in WA) | $40-$80 |
+| RC transmitter (manual override) | RadioMaster TX16S + ELRS 2.4 GHz receiver. **Do not use Crossfire 915 MHz** — collides with SiK 915 MHz primary C2 even with FHSS separation. | $150-$250 |
+| Dock connectivity (PoE) | TP-Link TL-PoE10R splitter (12 V DC out) + Cat6 from house switch to dock through existing power conduit. Wired Ethernet is the dock's primary link; WiFi is fallback only. Eliminates the "dock cannot open lid for emergency landing" failure mode that pure WiFi creates. | $30 + cable |
 | Misc (wiring, connectors, weatherproofing) | — | $100-$200 |
 | **Total** | | **$1,700-$2,750** |
 
@@ -527,6 +703,43 @@ The system follows the same pattern as Frigate, Zigbee2MQTT, and Z-Wave JS: a **
 
 The MQTT contract is the interface — the integration works identically regardless of how the bridge is deployed.
 
+### 8.1.1 Reference Deployment
+
+The property runs a multi-host home infrastructure. The drone_hass components are mapped to the existing hosts to honour the compliance-independence principle (recorder cannot share a fate with HA Core) and to avoid forcing infrastructure relocation. All cross-host flows are catalogued in `docs/networking.md`.
+
+**Subnet layout** (correct as of 2026-04; see `docs/networking.md` for the authoritative VLAN map):
+
+| VLAN | Subnet | Role |
+|---|---|---|
+| 1 | 10.10.0.0/24 | Management (router 10.10.0.1) |
+| 2 | 10.10.2.0/24 | Ubuntu LLM server (10.10.2.222) — Ollama, Plex, go2rtc, mediamtx, chronyd |
+| 4 | 10.10.4.0/24 | Synology DS1819+ (10.10.4.186) — NAS, MinIO |
+| 7 | 10.10.7.0/24 | IoT (e.g., generator monitor at 10.10.7.209) |
+| 10 | 10.10.10.0/24 | HAOS host + drone integration components + ESPHome dock |
+| 20 | 10.10.20.0/24 | Drone-side: companion RPi, Pixhawk telemetry — firewalled off the internet |
+
+**Component placement:**
+
+| Component | Host | Process / Container | Lifecycle | Backup target | Fail mode |
+|---|---|---|---|---|---|
+| Bridge add-on (`mavlink_mqtt_bridge` + ComplianceGate + compliance recorder + Litestream + OpenTimestamps client) | HAOS host (VLAN 10) | Docker via HA Supervisor | Auto-start before HA Core; survives HA restarts | Wrapped Ed25519 envelope to NAS `/volume1/llm_backup/drone_hass/keys/` (R-08); compliance DB to S3 + MinIO via Litestream | **fail-closed** — bridge down = no flights, no compliance writes |
+| HA Integration (`custom_components/drone_hass`) | HAOS host (VLAN 10) | HA Core process | Tied to HA Core | HA snapshot covers `.storage/core.config_entries` | **fail-closed for new authorizations**; entities go unavailable; bridge keeps logging |
+| Mosquitto broker | HAOS host (VLAN 10), `host_network: true` so it binds 10.10.10.x | Add-on | Supervisor-managed | passwd + ACL + persistence to NAS `/volume1/llm_backup/drone_hass/mosquitto/` | **fail-closed** — broker down = bridge ↔ HA blind |
+| go2rtc (RTSP → WebRTC remux) | Ubuntu LLM (10.10.2.222) | systemd unit (existing media stack) | Independent | Config in repo | fail-open for live video; recordings continue via mediamtx |
+| mediamtx (RTSP recording, 30-day rolling) | Ubuntu LLM (10.10.2.222) | systemd unit | Independent | NFS-mounted to NAS `/volume1/Movies/drone_recordings/` | fail-open for recording; live stream continues |
+| chronyd stratum-2 (NTS upstream, serves VLAN 10 + 20) | Ubuntu LLM (10.10.2.222) | systemd unit | Independent | Config in repo | fail-degraded — HAOS systemd-timesyncd takes over for VLAN 10; VLAN 20 holds local crystal until restored |
+| HAOS host NTP client (and Synology NTP client) | respective hosts | systemd-timesyncd / chronyc | with host | n/a | fail-degraded — hold local crystal, ~36 ms/hour drift |
+| Litestream replication (live in bridge container) | Inside bridge add-on | Sidecar process | with bridge | n/a (it IS the backup) | fail-degraded — chain still writes locally; pre-arm fails after `litestream_replication_lag_s > 5` in Part 108 mode (R-07) |
+| Litestream primary replica target | S3 us-west-2 with Object Lock COMPLIANCE 3 yr | AWS managed | independent | n/a | fail-degraded — bridge falls back to MinIO replica until S3 reachable |
+| Litestream secondary replica target | MinIO on Synology (10.10.4.186) | DSM Docker container | DSM | DSM snapshot | fail-degraded — S3 still primary |
+| Litestream S3 IAM credentials | HA Supervisor secrets, env-mounted into bridge add-on | n/a | with bridge | password manager + paper backup of IAM access key + secret | fail-closed for replication; rotate quarterly |
+| OpenTimestamps client (chain anchor) | Inside bridge add-on container | Scheduled task (hourly) | with bridge | n/a; proofs land in compliance DB and replicate via Litestream | fail-open — anchor latency increases, chain integrity unaffected |
+| ESPHome dock controller | Dock ESP32 (VLAN 10) | ESP-IDF firmware | independent of HAOS | source repo + secrets vault; OTA password rotated per build | **fail-safe** — interlocks enforced in firmware regardless of HA/bridge state (R-26 hardware smoke-relay; lid current-sense end-stop) |
+| Pixhawk 6C flight controller | Airframe | ArduPilot firmware | independent | parameter `.parm` file backup pre/post each tuning session, mirrored to NAS | **fail-safe** — firmware geofence + AP_Avoidance + RTL/ALT_HOLD failsafes operate without bridge or HA |
+| Companion RPi (MAVLink router, gpsd refclock for chronyd, RTSP source) | Airframe (VLAN 20) | systemd units | independent | image clone after first config; mirrored to NAS | fail-degraded — bridge loses telemetry/video but Pixhawk continues autonomously to RTL |
+
+**Cross-VLAN traffic note:** Synology and Ubuntu LLM serve other tenants (NAS shares, LLM/Plex) and are not relocated to VLAN 10. The cross-VLAN flows (HAOS↔Ubuntu for go2rtc/chronyd, HAOS↔Synology for MinIO/NFS) cross the ASUS router at wire speed (~0.2 ms added latency). AiProtection and adaptive QoS are disabled on the inter-VLAN paths between 10.10.10.x ↔ 10.10.2.x and 10.10.10.x ↔ 10.10.4.x to avoid CPU bottlenecks. Service discovery uses IP literals or split-horizon DNS (`mosquitto.drone.lan`, `chrony.drone.lan`) — no `.local` mDNS dependency. ASUS DNS-rebind protection has explicit exceptions for the local zone.
+
 ### 8.2 High-Level Overview
 
 <p align="center"><img src="https://raw.githubusercontent.com/acato/drone_hass/main/docs/diagrams/system-overview.svg" alt="System Architecture"></p>
@@ -537,7 +750,7 @@ The MQTT contract is the interface — the integration works identically regardl
 
 **Technology:** Python 3.12+, MAVSDK-Python (async), aiomqtt, SQLite (compliance DB)
 
-**Container:** Docker, managed by HA Supervisor on HAOS. Uses S6-overlay init system. Multi-arch (amd64, aarch64, armv7). Bundles `mavsdk_server` binary per architecture.
+**Container:** Docker, managed by HA Supervisor on HAOS. Uses S6-overlay init system. Multi-arch (amd64, aarch64). Bundles the `mavsdk_server` native binary per architecture. armv7 is not supported: no upstream `mavsdk_server` prebuilt exists for 32-bit ARM, and source builds are out of scope for the pipeline. aarch64 covers Raspberry Pi 4/5 with a 64-bit OS, which is the realistic SBC target.
 
 **Add-on metadata:**
 
@@ -546,7 +759,7 @@ name: "drone_hass MAVLink Bridge"
 slug: "drone_hass_bridge"
 startup: system          # Starts before HA Core
 boot: auto               # Auto-starts on HA boot
-arch: [amd64, aarch64, armv7]
+arch: [amd64, aarch64]
 ports:
   14540/udp: 14540       # MAVLink UDP (MAVSDK default)
   14550/udp: 14550       # MAVLink UDP (GCS)
@@ -647,12 +860,19 @@ class OperationalMode(Enum):
     PART_108 = "part_108"    # Autonomous with Flight Coordinator monitoring
 
 class ComplianceGate:
+    # Margin between max waypoint altitude and the operational ceiling, in metres.
+    # Tuned to baro-noise + thermal lift on warm days so a benign mission does not
+    # nuisance-trip the firmware fence at apex. See §11.3 altitude invariant.
+    WAYPOINT_CEILING_MARGIN_M = 5.0
+
     async def authorize_flight(self, mission, context):
         # Common gates (both modes)
         if not await self._safety_checks_pass(context):
             return False
         if not self._mission_within_operational_area(mission):
             return False
+        if not self._mission_waypoints_under_ceiling(mission):
+            return False                                            # added per task #12
         if not self._weather_within_envelope(context):
             return False
 
@@ -667,7 +887,40 @@ class ComplianceGate:
             await self._log_autonomous_authorization(mission, context)
             await self._notify_flight_coordinator(mission)
             return True
+
+    def _mission_waypoints_under_ceiling(self, mission):
+        """Reject missions whose tallest waypoint sits within WAYPOINT_CEILING_MARGIN_M
+        of the operational ceiling. Baro noise + thermal lift can push the actual
+        flown altitude above the planned waypoint by 1-3 m on a warm day; without
+        the margin the firmware fence at FENCE_ALT_MAX trips at apex."""
+        ceiling = self.config.operational_area.altitude_ceiling_m   # 55 m today
+        max_wp_alt = max(wp.alt_m for wp in mission.waypoints)
+        if max_wp_alt > ceiling - self.WAYPOINT_CEILING_MARGIN_M:
+            self._reject(
+                code='waypoint_too_high',
+                detail=f"max waypoint altitude {max_wp_alt:.1f} m exceeds "
+                       f"ceiling {ceiling} m minus {self.WAYPOINT_CEILING_MARGIN_M} m margin",
+                mission_id=mission.id,
+            )
+            return False
+        # Also enforce floor — landing approaches shouldn't plan below 0 m AGL.
+        min_wp_alt = min(wp.alt_m for wp in mission.waypoints if wp.alt_m is not None)
+        floor = self.config.operational_area.altitude_floor_m       # 0 m today
+        if min_wp_alt < floor:
+            self._reject(code='waypoint_too_low',
+                         detail=f"waypoint altitude {min_wp_alt:.1f} m below floor {floor} m",
+                         mission_id=mission.id)
+            return False
+        return True
 ```
+
+The check is applied at three points in the mission lifecycle:
+
+1. **Mission upload** — bridge runs `_mission_waypoints_under_ceiling()` before forwarding any `MISSION_ITEM_INT` to the FC. Reject = log compliance event + return error to HA.
+2. **Pre-arm** — runs again immediately before issuing arm-and-takeoff. Catches a mission that was uploaded valid but became invalid after an operational-area config change.
+3. **Mid-flight ceiling watchdog** — bridge subscribes to telemetry and triggers an RTL via `MAV_CMD_NAV_RETURN_TO_LAUNCH` if `relative_alt_m > altitude_ceiling_m - WAYPOINT_CEILING_MARGIN_M`. ArduPilot's own `FENCE_ALT_MAX` is the firmware backstop; this is the bridge's earlier-warning watchdog.
+
+The rejection is logged into the compliance chain with the mission ID, the rejected waypoint altitude, and the operative ceiling, so audit can confirm the gate ran on every attempt.
 
 ---
 
@@ -1291,7 +1544,7 @@ A first-class configuration object defining the approved geographic volume for o
                       [-122.3325, 47.6058] ]]
   },
   "altitude_floor_m": 0,
-  "altitude_ceiling_m": 37,
+  "altitude_ceiling_m": 55,
   "lateral_buffer_m": 5,
   "airspace_class": "G"
 }
@@ -1300,6 +1553,23 @@ A first-class configuration object defining the approved geographic volume for o
 The bridge validates every mission against this area before upload. Waypoints outside the polygon or above the ceiling are rejected. The operational area is included in compliance records and visualizable in the HA dashboard.
 
 ArduPilot's firmware geofence is configured to match the operational area — providing a second, independent enforcement layer in the flight controller itself.
+
+#### Altitude Invariant
+
+The altitude parameters are interlocked and must be configured together. Changing one without the others breaks safe operation:
+
+```
+tree_max  <  RTL_ALT  <  altitude_ceiling_m  <  FENCE_ALT_MAX  <  Part 107 §107.51 (122 m)
+  30 m   +20m  50 m       +5m   55 m              +5m   60 m       <       122 m
+```
+
+- **`tree_max → RTL_ALT`**: 20 m / 65 ft margin covers wind, baro drift, and rotor-downwash effects during the vertical RTL climb-out.
+- **`RTL_ALT → ceiling`**: 5 m so the RTL climb does not trip the operational ceiling.
+- **`ceiling → FENCE_ALT_MAX`**: 5 m so warm-day baro thermals do not nuisance-trip the firmware fence at the operational ceiling.
+- **ComplianceGate** rejects any mission with `max(waypoint.alt) > ceiling - 5 m` (same baro-noise reasoning).
+- **`WPNAV_SPEED_UP`**: configure conservative climb rate; fast climbs overshoot and can punch through the fence at apex.
+
+**Annual checklist (operator action):** re-survey tree heights every spring before leaf-out canopy stabilizes. If the tallest tree on or near the parcel has grown past 30 m, raise all four numbers in lockstep so the inequality chain still holds. Record the survey in the compliance log.
 
 ### 11.4 Weather Monitoring
 
@@ -1313,6 +1583,88 @@ Local instruments (not API data) mounted at the dock site:
 | Humidity (dock) | Relative humidity | Informational (logged, not gating) |
 
 Weather conditions at the go/no-go decision are logged as compliance records.
+
+### 11.6 Time Synchronization
+
+Compliance records, OpenTimestamps proofs, hash-chain ordering, MAVLink v2 signed-message replay protection, and S3 Object Lock retention enforcement all require monotonic, accurate UTC across every component. A multi-second clock skew breaks signature freshness, breaks OpenTimestamps verification, breaks MAVLink v2 replay protection, and creates audit-defeating gaps in the chain. Hash-chain monotonicity additionally requires that two records written within the same millisecond stay correctly ordered.
+
+#### Architecture
+
+| Role | Component | Source |
+|---|---|---|
+| Stratum-1 reference (off-property) | `time.cloudflare.com`, `time.nist.gov`, `nts.netnod.se` | NTS-secured (NTPv4 + Network Time Security, RFC 8915) |
+| Stratum-2 server (on-property, primary) | `chronyd` on the Ubuntu LLM host (10.10.2.222, VLAN 2) | Pulls from upstream NTS pool over WAN; serves VLAN 10 + VLAN 20 via inter-VLAN routing on the ASUS |
+| Stratum-2 fallback | `systemd-timesyncd` on HAOS host pulling NTS upstream directly | Used by VLAN 10 clients only if Ubuntu LLM is down |
+| Stratum-3 clients | Bridge container, Mosquitto, ESPHome dock, ArduPilot companion (RPi) | Pull from Ubuntu LLM host (primary) with HAOS as backup |
+| Aircraft FC clock | Pixhawk 6C RTC (CR1220 battery — verify fitted!) | Set from companion RPi via MAVLink `SYSTEM_TIME` (#2) at boot and every 60 s in flight |
+
+**Why Ubuntu LLM hosts the stratum-2 server, not HAOS:** the HA Supervisor manages `systemd-timesyncd` on the HAOS host and does not allow native chronyd installation; running chronyd inside an add-on with `SYS_TIME` capabilities is technically possible but tightly couples the local time service to HA Core lifecycle, which violates the compliance-independence principle that motivated the add-on/integration split. Ubuntu LLM is already running, has native chronyd 4.5+ with full NTS support, and survives HA Core restarts independently. HAOS still runs `systemd-timesyncd` to NTS upstream as a fallback so VLAN 10 clients can fail over if Ubuntu LLM is down.
+
+**Why a local stratum-2 at all:** the drone VLAN is firewalled off the internet (R-03), so VLAN 20 components cannot reach `pool.ntp.org` directly.
+
+**IPv6:** chronyd is configured with `ipv4` directive on every pool/server line — the IPv6 plan is undefined and dual-stack chronyd silently prefers v6 if router-advertisements leak in.
+
+**GPS fallback:** when WAN is down, `gpsd` on the companion RPi feeds the airframe GPS time into `chronyd` via `refclock SHM`, giving the property bounded recovery without internet.
+
+#### Pre-arm and abort thresholds
+
+| Condition | Threshold | Action | Rationale |
+|---|---|---|---|
+| Bridge host clock offset vs stratum-1 (chronyc tracking) | > 250 ms | Pre-arm fail | Hash-chain monotonicity at sub-second resolution; tighter than MAVLink replay needs |
+| In-flight clock step | > 2 s in any single chrony adjustment (`maxchange 2.0 1 -1`) | Force RTL + alert RPIC | A 2 s step mid-flight indicates upstream attack or hardware fault |
+| Pixhawk RTC vs companion RPi | > 5 s | Pre-arm fail | Cold-boot Pixhawk without RTC battery reads 1980-01-01 until SYSTEM_TIME arrives |
+| Upstream NTS sources lost | > 15 min | Alert (HA repair issue), continue serving from local crystal | ~10 ppm drift = ~36 ms/hour, tolerable for hours |
+| Local stratum-2 drift | > 100 ms | ComplianceGate refuses new flights | Hash-chain ordering depends on a stable reference |
+
+```python
+# Bridge startup (added to checklist in resolutions-ua.md §1326).
+import subprocess
+result = subprocess.run(['chronyc', '-c', 'tracking'], capture_output=True, text=True)
+fields = result.stdout.split(',')
+offset_s = abs(float(fields[4]))                  # "Last offset" in seconds
+if offset_s > 0.250:
+    raise PreArmFailure(f"Clock offset {offset_s:.3f}s exceeds 250 ms threshold")
+```
+
+#### Compliance integration
+
+- **Compliance event `compliance/clock_step`:** chronyd is configured with `makestep 0.1 -1` so any correction larger than 100 ms emits a syslog line. A journald exporter publishes the event so audit can correlate "the chain has a 200 ms gap because chrony stepped at T."
+- **Hourly snapshot:** `chronyc sources` output is logged to the compliance DB every hour for forensic reconstruction.
+- **Hash-chain sequence numbers** are derived from a monotonic counter, not wall time — wall time is stored alongside but never used for ordering.
+- **`SYSTEM_TIME` (#2) MAVLink message** must be added to the AP_Signing whitelist (it is *not* signed by default in ArduPilot 4.x), otherwise an injector on VLAN 20 can skew the FC RTC. Bridge enforces signed-only on this message at the MAVLink layer.
+- **Leap-second handling:** chronyd `leapsectz right/UTC` + `smoothtime 400 0.001 leaponly` so the chain never sees a 23:59:60.
+
+#### Bounded attack window
+
+The OpenTimestamps anchor caps **forward-dating** attacks: a compromised local clock cannot produce an OTS proof claiming an earlier Bitcoin block-time than the one the calendar server actually issued. Litestream object metadata in S3 (write times the local host does not control) caps **backward-dating** attacks for replicated records. The combination bounds the window during which a single-host clock compromise can rewrite the chain to within (a) the OTS calendar submission interval and (b) the Litestream replication latency — both seconds-scale, not hours-scale.
+
+#### Health publishing
+
+Bridge publishes `drone_hass/{drone_id}/health/chrony` (retained, QoS 1, 30 s rate) with stratum, offset_ms, last_rx_age_s, source_count. HA exposes a sensor with an alert if stratum > 3 or offset_ms > 100.
+
+#### Outbound dependencies and firewall rules
+
+```
+# WAN VLAN: allow Ubuntu LLM host outbound to NTS pool
+ALLOW 10.10.2.222 -> 0.0.0.0/0 :123/udp        # NTP query
+ALLOW 10.10.2.222 -> 0.0.0.0/0 :4460/tcp       # NTS-KE handshake
+
+# Optional: HAOS host fallback NTS upstream
+ALLOW <HAOS-host-IP> -> 0.0.0.0/0 :123/udp
+ALLOW <HAOS-host-IP> -> 0.0.0.0/0 :4460/tcp
+
+# VLAN 20 (drone): companion RPi -> Ubuntu LLM only
+ALLOW 10.10.20.10 -> 10.10.2.222 :123/udp
+DENY  10.10.20.0/24 -> 0.0.0.0/0 :123/udp      # explicit deny anywhere else
+
+# VLAN 10 (IoT/dock): same pattern. ESPHome dock cannot do NTS yet, so it
+# must be pinned to the local stratum-2 via DHCP option 42 and locked down
+# by iptables; do not let the dock fall back to public NTP servers.
+ALLOW 10.10.10.0/24 -> 10.10.2.222 :123/udp
+DENY  10.10.10.0/24 -> 0.0.0.0/0 :123/udp      # blocks dock fallback
+```
+
+ASUSWRT does not filter intra-VLAN L2 traffic, so `client → 10.10.2.222` only needs an inter-VLAN allow when client and server are on different VLANs.
 
 ---
 
@@ -1354,7 +1706,8 @@ Weather conditions at the go/no-go decision are logged as compliance records.
 
 | Attack | Mitigation |
 |--------|------------|
-| **WiFi deauth / C2 link loss** | WPA3 with PMF. Dedicated VLAN. Backup SiK 915 MHz radio for redundant C2 link. ArduPilot RTL failsafe on GCS heartbeat loss. |
+| **WiFi deauth (secondary video link only)** | WPA3 with PMF on dedicated drone SSID. Loss of WiFi degrades video feed only — primary C2 (SiK 915 MHz) keeps the mission alive. Severity downgraded after the C2 inversion (architecture.md §6.3). |
+| **Primary C2 (SiK) link loss / jamming** | MAVLink v2 signing on SiK + AES-128. ArduPilot `FS_GCS_TIMEOUT=15s` + `FS_GCS_ENABLE=2` (continue mission to next safe waypoint then RTL — avoids RTL on transient FHSS fades). RPIC manual override via ELRS 2.4 GHz remains available. |
 | **RTSP interception** | Media server authentication. Bind to localhost/VLAN. |
 | **Notification spoofing (Part 107 mode)** | Authorization token architecture prevents fake events from triggering flights. |
 | **Dock lid during flight** | ESP32 interlock: refuse close unless pad-clear sensor confirms AND flight state = landed. |
@@ -1394,9 +1747,10 @@ An attacker must compromise all three layers to cause a dangerous unauthorized f
 
 | Failure | Detection | Recovery |
 |---------|-----------|----------|
-| Bridge loses WiFi | MQTT LWT → "offline" | HA marks unavailable. Bridge auto-reconnects. ArduPilot GCS-loss failsafe (RTL after timeout). |
-| Bridge process crash | MQTT LWT → "offline" | systemd auto-restarts service. ArduPilot continues mission autonomously or RTL on GCS loss. |
-| MAVLink link lost (WiFi) | Heartbeat timeout | Bridge publishes "offline". SiK 915 MHz backup link available. ArduPilot RTL failsafe. |
+| Bridge loses WiFi | MQTT LWT → "offline" (HA-side only) | Primary C2 (SiK) is unaffected; mission continues. HA marks integration unavailable until WiFi restored. |
+| Bridge process crash | MQTT LWT → "offline"; SiK link goes silent | Supervisor auto-restarts container. ArduPilot `FS_GCS_TIMEOUT=15s` + `FS_GCS_ENABLE=2` (continue then RTL). |
+| MAVLink primary link lost (SiK 915 MHz) | RADIO_STATUS rate stops; bridge sees no telemetry | Bridge publishes `link_degraded`. ArduPilot fails safe per `FS_GCS_*`. RPIC manual override on ELRS 2.4 GHz remains available. WiFi-secondary path may still carry video for situational awareness. |
+| Secondary WiFi video lost mid-flight | go2rtc reports stream timeout | Mission continues on SiK. Onboard SD recording continues. Live video resumes when WiFi recovers. |
 | MQTT broker down | Bridge reconnect loop | Commands blocked. Drone unaffected (mission continues on flight controller). |
 | Media server down | Stream error | Stream stops. Flight unaffected. |
 | Mission upload fails | MAVLink MISSION_ACK error → MQTT response | HA shows error. Drone stays on ground. |

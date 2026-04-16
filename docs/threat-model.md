@@ -196,7 +196,7 @@
 
 #### ATK-VID-01: RTSP Stream Interception
 
-- **Attack vector:** RTSP streams are unencrypted by default. An attacker on the LAN can connect to the camera's RTSP URL (e.g., `rtsp://10.0.0.50:8554/drone`) or the media server's RTSP URL and view the live camera feed.
+- **Attack vector:** RTSP streams are unencrypted by default. An attacker on the LAN can connect to the camera's RTSP URL (e.g., `rtsp://10.10.20.50:8554/drone`) or the media server's RTSP URL and view the live camera feed.
 - **Prerequisites:** LAN access. Knowledge of RTSP URL (discoverable via network scanning or from MQTT `state/stream` topic).
 - **Impact:** Privacy violation (3) -- attacker sees live property surveillance video. Data exfiltration (7).
 - **Severity:** **Medium**

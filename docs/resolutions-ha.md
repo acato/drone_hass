@@ -194,7 +194,7 @@ async def _handle_execute_mission(self, cmd):
 operational_area:
   # Source of truth is this file, not MQTT retained messages.
   geojson_file: "/data/compliance/operational_area.geojson"
-  altitude_ceiling_m: 36.6  # 120 ft
+  altitude_ceiling_m: 55  # 180 ft — 5 m above RTL_ALT (50 m), well below Part 107 §107.51 ceiling (122 m)
   altitude_floor_m: 0
   lateral_buffer_m: 5
 ```
@@ -263,19 +263,19 @@ message_size_limit 65536
 
 ```
 # In mosquitto.conf, under the listener directive:
-listener 8883 10.0.10.1
+listener 8883 10.10.10.1
 ```
 
-Where `10.0.10.1` is the HA server's IP on the drone/IoT VLAN. This prevents any device on other VLANs from reaching the broker.
+Where `10.10.10.1` is the HA server's IP on the drone/IoT VLAN. This prevents any device on other VLANs from reaching the broker.
 
 If using the HAOS Mosquitto add-on (which does not support per-interface binding natively), enforce this at the firewall level instead:
 
 ```bash
 # On the ASUS router (iptables-style, adapt to your model):
 # Only allow MQTT from the bridge container IP and HA's own IP
-iptables -A FORWARD -d 10.0.10.1 -p tcp --dport 8883 -s 10.0.10.2 -j ACCEPT  # bridge
-iptables -A INPUT -d 10.0.10.1 -p tcp --dport 8883 -s 127.0.0.1 -j ACCEPT    # HA local
-iptables -A FORWARD -d 10.0.10.1 -p tcp --dport 8883 -j DROP                  # all others
+iptables -A FORWARD -d 10.10.10.1 -p tcp --dport 8883 -s 10.10.10.2 -j ACCEPT  # bridge
+iptables -A INPUT -d 10.10.10.1 -p tcp --dport 8883 -s 127.0.0.1 -j ACCEPT    # HA local
+iptables -A FORWARD -d 10.10.10.1 -p tcp --dport 8883 -j DROP                  # all others
 ```
 
 3. **Bridge resilience:** The bridge must continue operating via MAVLink even when MQTT is unresponsive. If MQTT publishes fail, the bridge queues telemetry internally (bounded buffer, e.g., 1000 messages) and reconnects. The flight controller's mission executes independently of MQTT.
@@ -359,7 +359,7 @@ Better yet, have the dock ESP32 publish weather data directly to MQTT topics the
 ```yaml
 # ESPHome dock config -- publish to MQTT in addition to native API
 mqtt:
-  broker: 10.0.10.1
+  broker: 10.10.10.1
   port: 8883
   username: "dock_user"
   password: !secret mqtt_dock_password
@@ -384,7 +384,19 @@ Add `dock_user` to the Mosquitto password file and ACL:
 user dock_user
 topic write dock/weather/#
 topic write dock/status/#
+# Dock heartbeat (architecture.md §5.5 — bridge refuses to arm if stale)
+topic write drone_hass/+/dock/heartbeat
+# Dock authorization-display cross-verification (ATK-HA-02 commitment scheme).
+# READ-ONLY on the request topic — dock displays whatever bridge_user publishes.
+# ha_user is read-only too, but the dock independently verifies the HMAC payload
+# (see ATK-HA-02 below) so a hostile ha_user cannot make the dock display a
+# spoofed challenge.
+topic read  drone_hass/+/command/authorize_flight/request
+# Dock display-clear topic (operator-initiated abort, optional)
+topic read  drone_hass/+/dock/display/clear
 ```
+
+**Mosquitto enforcement:** the broker ACL ensures only `bridge_user` can WRITE to `drone_hass/+/command/authorize_flight/request`. `ha_user` is read-only on that topic. The dock subscribes; if a request arrives that did not originate from `bridge_user`, it never reaches the broker because the broker rejects the publish.
 
 5. **The bridge ComplianceGate must independently verify weather** from the dock MQTT topics it subscribes to directly, not from HA entity states.
 
@@ -396,81 +408,144 @@ topic write dock/status/#
 
 **Resolution:**
 
-Implement a cryptographic challenge-response authorization flow:
+Two-channel commit-and-reveal authorization flow. The MQTT broker only ever sees a *commitment* (a SHA-256 hash). The actual nonce is delivered to the RPIC out-of-band — primary path is an Ingress panel served by the bridge itself; fallback path is a push notification routed through an HA webhook automation. `ha_user` MQTT credentials alone are insufficient to forge an authorization.
+
+### Commitment generation (bridge)
 
 ```python
-# Bridge side -- when a flight is requested
-import secrets
-import hashlib
+import secrets, hashlib, time
 
 class ComplianceGate:
+    AUTH_RATE_LIMIT_S = 60   # max one authorize request per drone per minute (DoS guard)
+
     async def _wait_for_rpic_authorization(self, timeout=120):
-        # Generate a one-time challenge
-        nonce = secrets.token_urlsafe(32)
-        challenge_hash = hashlib.sha256(nonce.encode()).hexdigest()[:12]
+        # 1. Generate a one-time secret nonce and its commitment.
+        nonce = secrets.token_urlsafe(32)                              # 32 bytes urandom = 256 bits
+        commitment = hashlib.sha256(nonce.encode()).hexdigest()
+        challenge_display = commitment[:12]                            # 12-char visual code
 
-        # Store the expected nonce internally (NOT published to MQTT)
+        # 2. Store nonce + expiry in memory only. Never publish nonce on MQTT.
         self._pending_auth_nonce = nonce
+        self._pending_auth_commitment = commitment
         self._pending_auth_expires = time.time() + timeout
+        self._pending_auth_consumed = False
 
-        # Publish authorization request (includes the nonce for the notification)
+        # 3. Publish the commitment + display code + dock-side HMAC to MQTT.
+        # ha_user can read this — that is fine; the commitment leaks no information
+        # about the preimage. The HMAC binds the payload to a key the dock holds
+        # so a compromised ha_user (write only via broker ACL violation, but
+        # defence-in-depth) cannot make the dock OLED display an attacker-chosen
+        # value. The HMAC key is provisioned to the dock at install time over
+        # USB and is distinct from the bridge↔phone HMAC key.
+        monotonic_nonce = self._next_monotonic_auth_nonce()            # local counter, persisted
+        payload = {
+            "commitment": commitment,
+            "challenge_display": challenge_display,                    # cross-verify on dock OLED + HA card + phone
+            "mission_id": self._pending_mission_id,
+            "expires_at": self._pending_auth_expires,
+            "monotonic_nonce": monotonic_nonce,                        # dock rejects if non-increasing (replay)
+        }
+        payload["dock_hmac"] = hmac.new(
+            self.config["dock_authorize_hmac_key"].encode(),
+            json.dumps(
+                {k: payload[k] for k in ("commitment", "challenge_display",
+                                          "mission_id", "expires_at", "monotonic_nonce")},
+                sort_keys=True,
+            ).encode(),
+            hashlib.sha256,
+        ).hexdigest()
         await self.mqtt.publish(
             f"drone_hass/{self.drone_id}/command/authorize_flight/request",
-            json.dumps({
-                "nonce": nonce,
-                "challenge_display": challenge_hash,  # Short code shown in notification
-                "mission_id": self._pending_mission_id,
-                "expires_at": self._pending_auth_expires,
-            }),
+            json.dumps(payload),
             qos=1,
         )
 
-        # Wait for response with matching nonce
+        # 4. Deliver the nonce to the RPIC out-of-band.
+        #    Primary:  Ingress panel (RPIC at HA UI) — bridge holds the nonce in
+        #              process memory; UI fetches via Ingress, no MQTT.
+        #    Fallback: webhook -> HA automation -> mobile_app push notification.
+        await self._deliver_nonce_oob(nonce, challenge_display)
+
+        # 5. Wait for the response. Verify the preimage hashes to our commitment
+        #    AND the commitment has not already been consumed.
         try:
             response = await asyncio.wait_for(
                 self._auth_response_future, timeout=timeout
             )
-            if response.get("nonce") != self._pending_auth_nonce:
+            received = response.get("nonce", "")
+            if hashlib.sha256(received.encode()).hexdigest() != self._pending_auth_commitment:
                 return False
             if time.time() > self._pending_auth_expires:
                 return False
+            if self._pending_auth_consumed:                            # single-use
+                return False
+            self._pending_auth_consumed = True
             return True
         except asyncio.TimeoutError:
             return False
         finally:
             self._pending_auth_nonce = None
+            self._pending_auth_commitment = None
+
+    async def _deliver_nonce_oob(self, nonce, challenge_display):
+        """Out-of-band nonce delivery. The Ingress panel polls in-process state
+        and never needs the nonce on the wire. The webhook fallback POSTs it to
+        HA over a local HTTP socket bound to the Docker bridge network."""
+        # Make the nonce visible to the Ingress panel via in-process state.
+        self._ingress_panel_state["nonce"] = nonce
+
+        # Also fire the webhook fallback for an absent/mobile RPIC.
+        webhook_url = self.config["ha_webhook_url"]                    # e.g. http://homeassistant:8123/api/webhook/<id>
+        async with aiohttp.ClientSession() as s:
+            await s.post(webhook_url, json={
+                "nonce": nonce,
+                "challenge_display": challenge_display,
+                "mission_id": self._pending_mission_id,
+                # HMAC over the body using a shared secret known only to bridge + HA automation.
+                # Defense-in-depth against webhook URL leakage.
+                "hmac": hmac.new(
+                    self.config["webhook_hmac_key"].encode(),
+                    json.dumps({"nonce": nonce, "mid": self._pending_mission_id}, sort_keys=True).encode(),
+                    hashlib.sha256,
+                ).hexdigest(),
+            })
 ```
 
-On the HA integration side, the notification includes the nonce and sends it back:
+### Out-of-band delivery — primary: Ingress panel
 
-```python
-# In the HA integration's automation / AppDaemon
-# The notification carries the nonce in its data
-async def send_rpic_notification(hass, coordinator, request_data):
-    await hass.services.async_call("notify", "mobile_app_rpic_phone", {
-        "title": "Perimeter Alert",
-        "message": f"Mission: {request_data['mission_id']} | Code: {request_data['challenge_display']}",
-        "data": {
-            "actions": [
-                {
-                    "action": "LAUNCH_DRONE",
-                    "title": "LAUNCH DRONE",
-                },
-                {
-                    "action": "IGNORE",
-                    "title": "IGNORE",
-                },
-            ],
-            # The nonce is embedded in the notification action URI
-            "action_data": {"nonce": request_data["nonce"]},
-        },
-    })
-```
+The bridge add-on exposes an Ingress panel (`ingress: true`, `ingress_port: 8099` per architecture.md §8.3). When an authorize request is pending, the panel renders mission_id + challenge_display + an "AUTHORIZE LAUNCH" button. Clicking the button POSTs the in-memory nonce to the bridge's local HTTP endpoint, which feeds the response back into `_auth_response_future` in-process. The nonce never traverses MQTT, never traverses HA Core. This is the preferred flow when the RPIC is at the HA UI.
 
-When the RPIC taps LAUNCH, the HA automation publishes the nonce back to the bridge:
+### Out-of-band delivery — fallback: HA webhook automation
+
+When the RPIC is mobile, the bridge POSTs to a webhook automation in HA. The webhook URL is the capability — narrowly scoped to one action, rotatable by deleting the automation. HA long-lived access tokens (LLATs) are deliberately *not* used here: HA tokens cannot be scoped to a single service, so a token issued for `notify.*` is functionally admin.
 
 ```yaml
-# HA automation snippet
+# HA automation: webhook -> push notification
+- alias: "Bridge: deliver authorize_flight nonce to RPIC phone"
+  trigger:
+    - platform: webhook
+      webhook_id: !secret bridge_authorize_webhook_id      # 128-bit random URL component
+      local_only: true                                     # bridge and HA share the Docker network
+      allowed_methods: [POST]
+  condition:
+    # Defense in depth: HMAC check rejects spoofed POSTs even if the webhook URL leaks.
+    - "{{ trigger.json.hmac == 
+         (trigger.json.nonce + trigger.json.mission_id) | hmac('sha256', states('input_text.bridge_webhook_hmac')) }}"
+  action:
+    - service: notify.mobile_app_rpic_phone
+      data:
+        title: "Perimeter Alert"
+        message: "Mission: {{ trigger.json.mission_id }} | Code: {{ trigger.json.challenge_display }}"
+        data:
+          actions:
+            - action: "LAUNCH_DRONE"
+              title: "LAUNCH DRONE"
+            - action: "IGNORE"
+              title: "IGNORE"
+          action_data:
+            nonce: "{{ trigger.json.nonce }}"
+
+# Handle the RPIC tap: forward the nonce preimage back via the response topic.
 - alias: "Handle RPIC LAUNCH response"
   trigger:
     - platform: event
@@ -486,9 +561,44 @@ When the RPIC taps LAUNCH, the HA automation publishes the nonce back to the bri
         qos: 1
 ```
 
-An attacker who fires a fake `mobile_app_notification_action` event cannot include the correct nonce because the nonce was only delivered to the RPIC's phone via the push notification. The nonce is never published to any MQTT topic that the attacker could read (only to the authorization request topic, which is write-only from bridge_user and the response is matched internally).
+### Cross-verification
 
-**Residual risk:** If the attacker compromises the RPIC's phone, they have the nonce. Mitigated by phone security (biometrics, PIN).
+The 12-character `challenge_display` MUST be shown in three places simultaneously and the RPIC MUST verify all three match before tapping LAUNCH:
+
+1. **Phone push notification** — short code in the message body
+2. **Dock OLED display** — ESPHome displays the same code (subscribed to the same MQTT request topic)
+3. **HA Lovelace card** — bridge integration card shows the pending request
+
+A rogue push notification crafted by an attacker with only `ha_user` cannot match the dock OLED code, because the OLED is driven by the MQTT commitment topic published by the bridge. The RPIC catches the discrepancy and refuses to tap LAUNCH.
+
+### Rate limiting
+
+Bridge enforces `AUTH_RATE_LIMIT_S = 60` between authorize requests for the same `drone_id`. This caps the push-spam denial-of-service surface where an attacker repeatedly triggers authorize_flight commands to fatigue the RPIC into tapping reflexively.
+
+### Why this defeats `ha_user` replay
+
+- MQTT carries only `sha256(nonce)`. SHA-256 preimage resistance prevents `ha_user` from deriving the nonce.
+- The webhook URL and HMAC key are not in MQTT; they live in HA's `secrets.yaml` and the bridge's separate secrets store.
+- The Ingress panel path bypasses HA entirely once configured.
+- Single-use enforcement (`_pending_auth_consumed`) prevents an attacker who races to capture an in-flight response from re-authorizing a second mission within the same window.
+
+### Residual risks
+
+| Attacker capability | Result | Why |
+|---|---|---|
+| `ha_user` MQTT credentials only | Defeated | Sees only the commitment; cannot derive the nonce |
+| `ha_user` MQTT + leaked webhook URL | Defeated by HMAC condition | Rogue POSTs fail the template HMAC check |
+| `ha_user` MQTT + webhook URL + HMAC key | Wins (compromised HA) | Acknowledged residual risk; bridge cannot defend against full HA compromise |
+| Compromised RPIC phone | Wins | Inherent to the RPIC-tap regulatory model |
+| Push spam DoS | Limited to 1 req/min/drone | Rate limit caps fatigue attacks |
+
+### Operational dependency note
+
+Both delivery paths require HA Core to be running:
+- The Ingress panel is served via HA's auth proxy.
+- The webhook automation executes inside HA Core.
+
+Compliance *logging* continues independently of HA Core (the bridge writes to its own SQLite + Litestream). Only the *launch authorization* requires HA. This is the intended scope of the compliance-independence principle: HA can be down, the chain keeps writing, but no new flights can launch until HA is back.
 
 ---
 
@@ -537,7 +647,7 @@ async def async_handle_service(call: ServiceCall):
 # go2rtc.yaml
 streams:
   drone_live:
-    - rtsp://camera_user:camera_pass@10.0.20.50:8554/main  # Camera on drone VLAN
+    - rtsp://camera_user:camera_pass@10.10.20.50:8554/main  # Camera on drone VLAN
 
 # API authentication
 api:
@@ -558,12 +668,12 @@ webrtc:
 
 ```bash
 # Only the go2rtc/mediamtx process on the HA server can reach the camera's RTSP port
-# Drone VLAN: 10.0.20.0/24, HA server: 10.0.10.1, Camera on drone: 10.0.20.50
+# Drone VLAN: 10.10.20.0/24, HA server: 10.10.10.1, Camera on drone: 10.10.20.50
 
 # Allow HA server -> camera RTSP
-iptables -A FORWARD -s 10.0.10.1 -d 10.0.20.50 -p tcp --dport 8554 -j ACCEPT
+iptables -A FORWARD -s 10.10.10.1 -d 10.10.20.50 -p tcp --dport 8554 -j ACCEPT
 # Block all other access to camera RTSP
-iptables -A FORWARD -d 10.0.20.50 -p tcp --dport 8554 -j DROP
+iptables -A FORWARD -d 10.10.20.50 -p tcp --dport 8554 -j DROP
 
 # go2rtc listens on localhost only for RTSP re-serve (or on the HA VLAN IP)
 # Block external access to go2rtc's RTSP port
@@ -789,13 +899,25 @@ binary_sensor:
 1. **Run bridge process as non-root.** In the add-on's `Dockerfile`:
 
 ```dockerfile
-FROM ghcr.io/home-assistant/amd64-base:3.18
+# Base image is pinned by digest in CI; the :3.22 tag is shown for readability.
+# Renovate refreshes the digest on every base-image release.
+FROM ghcr.io/home-assistant/amd64-base:3.22
 
 # Install dependencies
-RUN apk add --no-cache python3 py3-pip
+RUN apk add --no-cache python3 py3-pip curl ca-certificates
 
 # Create non-root user
 RUN addgroup -S bridge && adduser -S bridge -G bridge
+
+# Fetch and verify mavsdk_server binary (supply-chain hardening — see R-27)
+ARG MAVSDK_VERSION=2.12.0
+ARG MAVSDK_SHA256
+RUN test -n "${MAVSDK_SHA256}" \
+ && curl -fsSL -o /tmp/mavsdk_server \
+      "https://github.com/mavlink/MAVSDK/releases/download/v${MAVSDK_VERSION}/mavsdk_server_musl_linux-amd64" \
+ && echo "${MAVSDK_SHA256}  /tmp/mavsdk_server" | sha256sum -c - \
+ && install -m 0755 /tmp/mavsdk_server /usr/local/bin/mavsdk_server \
+ && rm -f /tmp/mavsdk_server
 
 # Install Python packages
 COPY requirements.txt /app/requirements.txt
@@ -812,6 +934,8 @@ USER bridge
 
 ENTRYPOINT ["python3", "-m", "mavlink_mqtt_bridge"]
 ```
+
+The S6 init script re-verifies the on-disk `mavsdk_server` SHA-256 against the build-time value at every container start, so a tampered image layer (or a runtime bind-mount swap) fails closed before the bridge talks to the airframe.
 
 If using S6-overlay (standard for HA add-ons), configure the service to drop privileges:
 
@@ -910,10 +1034,10 @@ sudo systemctl mask avahi-daemon bluetooth
 sudo apt install -y ufw
 sudo ufw default deny incoming
 sudo ufw default deny outgoing
-sudo ufw allow in from 10.0.10.1 to any port 22 proto tcp   # SSH from HA only
-sudo ufw allow out to 10.0.10.1 port 8883 proto tcp          # MQTT to broker (if needed)
-sudo ufw allow out to 10.0.10.1 port 8554 proto tcp          # RTSP to media server
-sudo ufw allow in from 10.0.10.1 port 14540 proto udp        # MAVLink from bridge
+sudo ufw allow in from 10.10.10.1 to any port 22 proto tcp   # SSH from HA only
+sudo ufw allow out to 10.10.10.1 port 8883 proto tcp          # MQTT to broker (if needed)
+sudo ufw allow out to 10.10.10.1 port 8554 proto tcp          # RTSP to media server
+sudo ufw allow in from 10.10.10.1 port 14540 proto udp        # MAVLink from bridge
 sudo ufw allow out to any port 14540 proto udp                # MAVLink to FC
 sudo ufw allow out to any port 53 proto udp                   # DNS for NTP
 sudo ufw allow out to any port 123 proto udp                  # NTP
@@ -923,36 +1047,36 @@ sudo ufw enable
 2. **Dedicated drone VLAN** (on ASUS router):
 
 ```
-VLAN 20: Drone VLAN (10.0.20.0/24)
-  - RPi companion computer: 10.0.20.10 (static DHCP lease)
-  - Camera (Siyi A8 Mini): 10.0.20.50 (static DHCP lease)
+VLAN 20: Drone VLAN (10.10.20.0/24)
+  - RPi companion computer: 10.10.20.10 (static DHCP lease)
+  - Camera (Siyi A8 Mini): 10.10.20.50 (static DHCP lease)
   - WiFi SSID: "DroneNet" (WPA3-SAE, PMF required, hidden SSID)
 
-VLAN 10: IoT/HA VLAN (10.0.10.0/24)
-  - HA Server: 10.0.10.1
-  - Mosquitto: 10.0.10.1:8883
-  - go2rtc: 10.0.10.1:8554
-  - ESPHome dock: 10.0.10.20
+VLAN 10: IoT/HA VLAN (10.10.10.0/24)
+  - HA Server: 10.10.10.1
+  - Mosquitto: 10.10.10.1:8883
+  - go2rtc: 10.10.10.1:8554
+  - ESPHome dock: 10.10.10.20
 ```
 
 **Firewall rules between VLANs** (on ASUS router or dedicated firewall):
 
 ```
 # VLAN 20 (Drone) -> VLAN 10 (HA): only specific ports
-ALLOW 10.0.20.10 -> 10.0.10.1:14540/udp  # MAVLink from RPi to bridge
-ALLOW 10.0.20.50 -> 10.0.10.1:8554/tcp   # RTSP from camera to media server
-DENY  10.0.20.0/24 -> 10.0.10.0/24       # Block everything else
+ALLOW 10.10.20.10 -> 10.10.10.1:14540/udp  # MAVLink from RPi to bridge
+ALLOW 10.10.20.50 -> 10.10.10.1:8554/tcp   # RTSP from camera to media server
+DENY  10.10.20.0/24 -> 10.10.10.0/24       # Block everything else
 
 # VLAN 10 (HA) -> VLAN 20 (Drone): only bridge needs to reach RPi
-ALLOW 10.0.10.1 -> 10.0.20.10:14540/udp  # MAVLink from bridge to RPi
-ALLOW 10.0.10.1 -> 10.0.20.50:8554/tcp   # RTSP pull from camera
-ALLOW 10.0.10.1 -> 10.0.20.10:22/tcp     # SSH for maintenance
-DENY  10.0.10.0/24 -> 10.0.20.0/24       # Block everything else
+ALLOW 10.10.10.1 -> 10.10.20.10:14540/udp  # MAVLink from bridge to RPi
+ALLOW 10.10.10.1 -> 10.10.20.50:8554/tcp   # RTSP pull from camera
+ALLOW 10.10.10.1 -> 10.10.20.10:22/tcp     # SSH for maintenance
+DENY  10.10.10.0/24 -> 10.10.20.0/24       # Block everything else
 
 # VLAN 20 (Drone) -> Internet: DENY ALL
-DENY  10.0.20.0/24 -> 0.0.0.0/0          # No internet for drone VLAN
+DENY  10.10.20.0/24 -> 0.0.0.0/0          # No internet for drone VLAN
 # Exception: NTP if needed
-ALLOW 10.0.20.10 -> <NTP_SERVER>:123/udp
+ALLOW 10.10.20.10 -> <NTP_SERVER>:123/udp
 ```
 
 3. **No internet access for the drone VLAN.** The RPi does not need internet access. All software updates are performed via SSH from the HA server or physically via SD card.
@@ -1097,9 +1221,9 @@ Summary of VLAN design:
 
 | VLAN | Subnet | Purpose | Internet |
 |------|--------|---------|----------|
-| VLAN 10 | 10.0.10.0/24 | HA Server, Mosquitto, go2rtc, ESPHome dock | Yes (for Litestream, push notifications) |
-| VLAN 20 | 10.0.20.0/24 | Drone RPi, camera, SiK radio base | No |
-| VLAN 1 | 10.0.1.0/24 | Home LAN (workstations, phones) | Yes |
+| VLAN 10 | 10.10.10.0/24 | HA Server, Mosquitto, go2rtc, ESPHome dock | Yes (for Litestream, push notifications) |
+| VLAN 20 | 10.10.20.0/24 | Drone RPi, camera, SiK radio base | No |
+| VLAN 1 | 10.10.0.0/24 | Management / home LAN (workstations, phones) | Yes |
 
 Inter-VLAN rules:
 - VLAN 20 -> VLAN 10: only MAVLink (14540/udp) and RTSP (8554/tcp) to HA server IP
@@ -1208,87 +1332,214 @@ Compliance mode means even the AWS root account cannot delete objects during the
 
 **Resolution:**
 
-1. **Key storage with restrictive permissions** (in bridge startup):
+The Ed25519 signing private key is the single most sensitive secret in the compliance system: anyone who holds it can sign forged compliance records that verify cleanly. Earlier revisions of this doc accepted "key in HA backups" as a residual risk; that is no longer accepted. The key is wrapped with a memory-hard KDF before it ever touches disk, and the on-disk live copy is additionally TPM-sealed so an offline disk-image attacker cannot extract it without a TPM-equipped host.
+
+### Envelope format (used for both on-disk and backup)
 
 ```python
-import os
-import stat
+# scrypt + AES-256-GCM, JSON envelope. Versioned for forward compatibility.
+{
+    "version": 1,
+    "kdf": "scrypt",
+    "n": 131072,                  # 2^17 — ~250 MB working set
+    "r": 8,
+    "p": 1,
+    "salt": "<base64, 32 bytes>",
+    "nonce": "<base64, 12 bytes>",
+    "ciphertext": "<base64>",     # AES-256-GCM(plaintext = raw 32-byte Ed25519 seed)
+    "aad": "drone_hass_signing_key_v1|<drone_id>"
+}
+```
+
+`drone_id` is bound into the AEAD additional authenticated data so a wrapped blob from one install cannot be replayed on a different install.
+
+### Storage modes
+
+| Mode | Live on-disk blob | Backup blob | Boot behaviour |
+|---|---|---|---|
+| `tpm_sealed` (default if TPM 2.0 present) | scrypt-wrapped envelope encrypted with a TPM-sealed KEK bound to PCR 7 (Secure Boot state) | scrypt + AES-GCM, passphrase-derived KEK | Bridge auto-unseals via TPM; passphrase is recovery-only |
+| `passphrase_only` (no TPM, or operator opt-in) | scrypt + AES-GCM, passphrase-derived KEK | same | Bridge prompts on every restart via Ingress |
+
+The default for HAOS hosts with TPM 2.0 is `tpm_sealed`: it survives auto-updates and operator travel without giving up the stolen-backup defence (the backup blob remains passphrase-wrapped). Operators who prefer "no flights happen unless I'm physically present to type the passphrase" can opt into `passphrase_only` in `bridge_config.yaml`.
+
+### Key generation and unseal
+
+```python
+import os, stat, secrets, base64, json, hashlib, hmac, ctypes
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from zxcvbn import zxcvbn
 
-KEY_PATH = "/data/compliance/signing_key.pem"
-PUBKEY_PATH = "/data/compliance/signing_key.pub"
+KEY_PATH        = "/data/compliance/signing_key.enc"      # encrypted envelope, NOT .pem
+PUBKEY_PATH     = "/data/compliance/signing_key.pub"
+LEGACY_PEM      = "/data/compliance/signing_key.pem"
+SCRYPT_N, SCRYPT_R, SCRYPT_P = 2**17, 8, 1
+SCRYPT_SALT_LEN = 32
+AES_NONCE_LEN   = 12
 
-def load_or_create_signing_key():
+class PassphraseRejected(Exception): pass
+
+def _validate_passphrase(passphrase: str):
+    if len(passphrase) < 16:
+        raise PassphraseRejected("Min 16 characters")
+    score = zxcvbn(passphrase)["score"]                   # 0..4
+    if score < 3:
+        raise PassphraseRejected(f"Passphrase too weak (zxcvbn score {score}, need >= 3)")
+    if _is_in_breach_corpus(passphrase):                  # offline top-10k check
+        raise PassphraseRejected("Passphrase appears in breach corpus")
+
+def _zeroize(buf: bytearray):
+    """Best-effort wipe of sensitive bytes from memory."""
+    ctypes.memset(ctypes.addressof(ctypes.c_char.from_buffer(buf)), 0, len(buf))
+
+def _wrap(seed: bytes, passphrase: str, drone_id: str) -> dict:
+    salt = secrets.token_bytes(SCRYPT_SALT_LEN)
+    kek = Scrypt(salt=salt, length=32, n=SCRYPT_N, r=SCRYPT_R, p=SCRYPT_P).derive(passphrase.encode())
+    nonce = secrets.token_bytes(AES_NONCE_LEN)
+    aad = f"drone_hass_signing_key_v1|{drone_id}".encode()
+    ct = AESGCM(kek).encrypt(nonce, seed, aad)
+    envelope = {
+        "version": 1, "kdf": "scrypt", "n": SCRYPT_N, "r": SCRYPT_R, "p": SCRYPT_P,
+        "salt": base64.b64encode(salt).decode(),
+        "nonce": base64.b64encode(nonce).decode(),
+        "ciphertext": base64.b64encode(ct).decode(),
+        "aad": aad.decode(),
+    }
+    _zeroize(bytearray(kek))
+    return envelope
+
+def _unwrap(envelope: dict, passphrase: str, drone_id: str) -> bytes:
+    salt = base64.b64decode(envelope["salt"])
+    nonce = base64.b64decode(envelope["nonce"])
+    ct = base64.b64decode(envelope["ciphertext"])
+    aad = f"drone_hass_signing_key_v1|{drone_id}".encode()
+    if envelope["aad"].encode() != aad:
+        raise PassphraseRejected("Envelope AAD mismatch (wrong drone_id?)")
+    kek = Scrypt(salt=salt, length=32, n=envelope["n"], r=envelope["r"], p=envelope["p"]).derive(passphrase.encode())
+    try:
+        seed = AESGCM(kek).decrypt(nonce, ct, aad)
+    finally:
+        _zeroize(bytearray(kek))
+    return seed
+
+def load_or_create_signing_key(drone_id: str, get_passphrase, get_tpm=None):
+    """get_passphrase is a callable that prompts the operator via Ingress.
+       get_tpm is a TPM unseal callable (None = no TPM available)."""
+
+    # Refuse to silently overwrite a legacy plaintext key.
+    if os.path.exists(LEGACY_PEM):
+        raise SystemExit(
+            f"Legacy unencrypted key found at {LEGACY_PEM}. Migrate first: "
+            f"run `bridge-cli migrate-signing-key` which prompts for a new "
+            f"passphrase, wraps the existing key, then deletes the .pem."
+        )
+
     if os.path.exists(KEY_PATH):
-        # Verify permissions
-        st = os.stat(KEY_PATH)
-        if st.st_mode & 0o077:  # Any group/other permissions
-            logger.critical(
-                "Signing key has insecure permissions: %s. "
-                "Expected 0600. Refusing to start.",
-                oct(st.st_mode)
-            )
-            raise SystemExit(1)
+        with open(KEY_PATH) as f:
+            envelope = json.load(f)
 
-        with open(KEY_PATH, "rb") as f:
-            private_key = serialization.load_pem_private_key(f.read(), password=None)
-        return private_key
+        # Try TPM auto-unseal first (mode = tpm_sealed).
+        if get_tpm is not None and envelope.get("tpm_wrapped_kek"):
+            try:
+                seed = get_tpm(envelope)
+            except Exception as e:
+                logger.warning("TPM unseal failed (%s); falling back to passphrase", e)
+                seed = _unwrap_with_passphrase_prompt(envelope, drone_id, get_passphrase)
+        else:
+            seed = _unwrap_with_passphrase_prompt(envelope, drone_id, get_passphrase)
 
-    # First install: generate key
+        try:
+            return Ed25519PrivateKey.from_private_bytes(seed)
+        finally:
+            _zeroize(bytearray(seed))
+
+    # First install: generate seed, prompt for passphrase, wrap, persist.
+    passphrase = get_passphrase(prompt="Set new compliance-key passphrase (min 16 chars, zxcvbn>=3):")
+    _validate_passphrase(passphrase)
     private_key = Ed25519PrivateKey.generate()
+    seed = private_key.private_bytes(
+        serialization.Encoding.Raw,
+        serialization.PrivateFormat.Raw,
+        serialization.NoEncryption(),
+    )
+    envelope = _wrap(seed, passphrase, drone_id)
+    if get_tpm is not None:
+        envelope["tpm_wrapped_kek"] = get_tpm.seal(envelope)   # TPM-seals KEK; backup blob does NOT include this field
+    _zeroize(bytearray(seed))
+    _zeroize(bytearray(passphrase, "utf-8"))
 
-    # Write private key with 0600 permissions
-    with open(KEY_PATH, "wb") as f:
-        f.write(private_key.private_bytes(
-            serialization.Encoding.PEM,
-            serialization.PrivateFormat.PKCS8,
-            serialization.NoEncryption()
-        ))
-    os.chmod(KEY_PATH, stat.S_IRUSR | stat.S_IWUSR)  # 0600
+    with open(KEY_PATH, "w") as f:
+        json.dump(envelope, f)
+    os.chmod(KEY_PATH, 0o600)
 
-    # Write public key (this one can be shared)
+    # Public key + fingerprint as before, written to the chain genesis record.
     public_key = private_key.public_key()
     with open(PUBKEY_PATH, "wb") as f:
         f.write(public_key.public_bytes(
             serialization.Encoding.PEM,
-            serialization.PublicFormat.SubjectPublicKeyInfo
+            serialization.PublicFormat.SubjectPublicKeyInfo,
         ))
     os.chmod(PUBKEY_PATH, 0o644)
-
-    # Log the public key fingerprint as the first compliance record
-    fingerprint = hashlib.sha256(
-        public_key.public_bytes(
-            serialization.Encoding.Raw,
-            serialization.PublicFormat.Raw
-        )
-    ).hexdigest()
-
+    fingerprint = hashlib.sha256(public_key.public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw,
+    )).hexdigest()
     logger.info("Generated new Ed25519 signing key. Fingerprint: %s", fingerprint)
-    logger.info(
-        "IMPORTANT: Register this fingerprint with a trusted third party "
-        "(email to attorney, print and store in safe). "
-        "Fingerprint: %s", fingerprint
-    )
-
+    logger.info("IMPORTANT: record this fingerprint out-of-band (paper, attorney email, password manager) — it is the genesis anchor for chain verification.")
     return private_key
+
+def _unwrap_with_passphrase_prompt(envelope, drone_id, get_passphrase):
+    # 3 attempts in 60 s with exponential backoff, then bridge stays sealed.
+    for attempt in range(3):
+        passphrase = get_passphrase(prompt=f"Passphrase (attempt {attempt+1}/3):")
+        try:
+            seed = _unwrap(envelope, passphrase, drone_id)
+            log_compliance_event(type="key_unseal_success", method="passphrase")
+            _zeroize(bytearray(passphrase, "utf-8"))
+            return seed
+        except Exception:
+            log_compliance_event(type="key_unseal_failure", method="passphrase", attempt=attempt+1)
+            _zeroize(bytearray(passphrase, "utf-8"))
+            time.sleep(2 ** attempt)
+    raise PassphraseRejected("Bridge remains sealed; restart to retry.")
 ```
 
-2. **Exclude the key from HA backups.** The HA Supervisor backs up everything in `/data/`. To exclude the key, store it in a location the backup does not cover, or use a `.gitignore`-style exclusion if supported. Since HAOS add-on backups include all of `/data/`, the practical approach is:
+### Operational properties
 
-```python
-# Store key outside the standard backup path
-# Option A: Use /config/.ssl/ which is typically not backed up with add-on data
-# Option B: Document that the key must be backed up separately
+- **Backup contains only the passphrase-wrapped envelope** (TPM seal is host-bound, never backed up). Stolen backup → attacker faces scrypt+AES-256-GCM with N=2^17. Memory-hard cost defeats GPU/ASIC bruteforce far better than PBKDF2.
+- **Stolen disk image** (no host) → TPM-sealed KEK is unrecoverable, attacker falls back to the passphrase, same scrypt cost as the backup attack.
+- **Stolen entire host with TPM intact** → TPM auto-unseals on boot. Defense is physical security and the dock tamper sensor (R-26).
+- **Compliance gap accounting:** while sealed, the bridge writes `compliance_gap` markers (system-generated, unsigned, timestamped) so auditors see the gap was honest, not tampered.
+- **HA `binary_sensor.drone_bridge_sealed`** fires an HA notification when the bridge is sealed so the operator knows to enter the passphrase.
 
-# In the add-on documentation:
-# WARNING: The signing key at /data/compliance/signing_key.pem is included
-# in HA backups. After creating a backup, extract and delete the key from
-# the backup archive. Store the key backup separately (encrypted USB,
-# printed QR code, etc.).
+### Backup procedure
+
+The wrapped envelope is mirrored nightly to the existing CATOSTORE2 NAS path (`rsync_media.sh` extension):
+
+```
+/data/compliance/signing_key.enc  ->  10.10.4.186:/volume1/llm_backup/drone_hass/keys/
 ```
 
-The most practical approach for HAOS: accept that the key is in backups, but encrypt all HA backups with a strong password. Document that backup encryption is mandatory.
+Off-site copy: same envelope copied to the same Litestream S3 bucket as the chain itself, in a sibling prefix. Object Lock (COMPLIANCE, 3 yr) prevents deletion.
+
+### Passphrase loss and chain restart
+
+If the operator loses the passphrase AND the TPM is unavailable (new hardware, no recovery passphrase), the chain is dead. The recovery procedure is:
+
+1. Generate a new keypair (same flow as first install).
+2. Write a new genesis record that references the prior chain's last hash + the prior chain's last OTS proof. Auditors verify continuity across the break by walking the link.
+3. Document the loss event in the operations log.
+
+Operators MUST keep two copies of the passphrase: paper in a fireproof box, and a password manager (1Password / Bitwarden) entry with the recovery procedure URL.
+
+### Remote unseal note
+
+If the operator unseals while traveling via Nabu Casa, the passphrase traverses Cloudflare's TLS tunnel. This is acceptable (TLS 1.3, certificate pinning in the HA Companion app) but document it: passphrase entry over Nabu Casa is a hot path the operator should not use casually. Prefer Tailscale or local network for unseal.
+
+### Recovery tool
+
+A standalone `unwrap_signing_key.py` script ships with the bridge add-on (also published as a separate Python package) so an operator can recover a signed-record set from a backup blob even if the bridge is gone. The script reads the envelope JSON, prompts for passphrase, derives the KEK with scrypt, and emits a raw 32-byte seed file plus a `verify-chain.py` invocation example.
 
 ---
 
@@ -1615,6 +1866,125 @@ In the Part 107 authorization flow, capture the RPIC's phone GPS location and in
 ## Recommendation R-26: Dock Tamper Sensor
 
 **Resolution:** Fully addressed in ATK-DOCK-02 above. The ESPHome reed switch / vibration sensor configuration, HA tamper alert automation with critical push notification, and security screw specification are provided.
+
+---
+
+## Recommendation R-27: Build Hardening (Supply-Chain)
+
+The bridge add-on container is the trust anchor for every flight authorization, the Ed25519 signing key, and the compliance chain. A supply-chain compromise of any layer in the image — base image, Python wheel, native `mavsdk_server` binary, ArduPilot firmware fetched at build time, ESPHome dock firmware — gives an attacker bridge-equivalent capability. Build hardening makes the chain auditable end-to-end.
+
+### Pin every artifact by content digest
+
+```
+ghcr.io/home-assistant/amd64-base:3.22@sha256:<digest>      # base image
+mavlink/MAVSDK v2.12.0 mavsdk_server_musl_linux-amd64       SHA-256: <hex>
+ArduPilot Copter-4.5.7 .apj                                 SHA-256: <hex> + upstream GPG sig verified
+ESPHome 2026.4.x compiled dock firmware                     SHA-256: <hex>
+```
+
+The SHA-256 of `mavsdk_server` is checked at build time (Dockerfile, see ATK-LAT-01) and re-verified at every container start by the S6 init. ArduPilot `.apj` artifacts are GPG-verified against the ArduPilot project's published signing key, not just SHA-pinned — upstream tarball replacement attacks defeat hash pinning if the same release is republished. Tampered artifacts fail closed.
+
+### Multi-stage build
+
+Builder stage compiles/fetches; runtime stage strips toolchains and shells where feasible. Smaller attack surface, faster `cosign verify`, simpler SBOM. Distroless runtime base image is a future consideration once the S6/HA-Supervisor integration story for distroless is mature; today the Alpine base is the supported HA add-on path.
+
+### Python supply chain
+
+`requirements.txt` uses `--require-hashes` so a typosquatted package (`mavsdk` vs `mavsdk-python` vs `pymavsdk`) is rejected at install:
+
+```
+mavsdk==2.12.0 \
+  --hash=sha256:<hex>
+aiomqtt==2.3.0 \
+  --hash=sha256:<hex>
+```
+
+`pip-audit` runs on every Renovate PR; lockfile diffs are reviewed manually before merge.
+
+### SBOM
+
+`syft` generates a CycloneDX SBOM at every CI build:
+
+```yaml
+# .github/workflows/build.yml
+- uses: anchore/sbom-action@<sha>            # actions pinned by SHA, not tag
+  with:
+    image: ghcr.io/${{ github.repository }}/bridge:${{ github.sha }}
+    format: cyclonedx-json
+    output-file: sbom-${{ github.sha }}.json
+```
+
+The SBOM is attached as a release asset. The bridge logs both the **image digest** (canonical anchor) and a SHA-256 of the SBOM into the compliance chain at startup so audit can prove which exact dependency tree handled which flight.
+
+### Image signing — hybrid keyless + hardware-backed
+
+| Build type | Signing | Verification |
+|---|---|---|
+| `main` branch / dev / RC | Sigstore keyless via GitHub Actions OIDC + Rekor transparency log | `cosign verify` against Sigstore public good; certificate-identity-regexp documented in the README |
+| Tagged release (`v*`) | YubiHSM-backed key in addition to keyless | Operators verify either signature; YubiHSM signature defeats the GitHub-OIDC-as-single-point-of-failure attack |
+
+```yaml
+- uses: sigstore/cosign-installer@<sha>
+- run: cosign sign --yes ghcr.io/${{ github.repository }}/bridge@${{ steps.build.outputs.digest }}
+# Tagged releases additionally:
+- if: startsWith(github.ref, 'refs/tags/v')
+  run: cosign sign --key=hsm:!yubikey ghcr.io/${{ github.repository }}/bridge@${{ steps.build.outputs.digest }}
+```
+
+### Enforced verification at runtime
+
+Bridge add-on `run.sh` performs `cosign verify` of the *running* image digest on every container start, fail-closed. An override exists for local dev:
+
+```bash
+# /etc/s6-overlay/s6-rc.d/cosign-verify/up
+if [[ "${BRIDGE_SKIP_SIGNATURE_VERIFY:-0}" == "1" ]]; then
+    log_compliance_event signature_verification_skipped \
+        reason="BRIDGE_SKIP_SIGNATURE_VERIFY=1"
+else
+    cosign verify "ghcr.io/.../bridge@${IMAGE_DIGEST}" \
+        --certificate-identity-regexp "${COSIGN_IDENTITY_REGEXP}" \
+        --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+        || { log_compliance_event signature_verification_failed; exit 1; }
+fi
+```
+
+The skip flag writes a permanent compliance event so auditors see the bypass.
+
+### Vulnerability scanning
+
+Trivy gates merges on CRITICAL/HIGH (continuing the ATK-LAT-01 baseline):
+
+```yaml
+- uses: aquasecurity/trivy-action@<sha>
+  with:
+    scan-type: fs
+    severity: CRITICAL,HIGH
+    exit-code: 1
+```
+
+### Renovate cadence
+
+| Artifact | Cadence | Auto-merge if scans clean? |
+|---|---|---|
+| Base image (`amd64-base`) | Weekly | No — manual review for Alpine major bumps |
+| `mavsdk_server` | Quarterly + immediate on security advisories | No — re-test against ArduPilot SITL first |
+| Python deps | Weekly | Patch only, never auto |
+| ArduPilot firmware | Manual (release tracking + GPG verify) | Never auto |
+| GitHub Actions | Weekly | Patch only; pinned by commit SHA, not tag |
+| ESPHome firmware | Manual on dock interlock changes | Never auto |
+
+### SLSA provenance
+
+BuildKit `--provenance=true` produces a SLSA Level 2 attestation alongside the image. This proves "GitHub Actions built this image from this commit" without the operational complexity of Level 3 (hermetic, isolated builders) which is theatre at this scale. The provenance JSON is attached as a release asset and its SHA-256 is logged into the compliance chain.
+
+### GitHub repository hygiene
+
+- All Actions referenced by commit SHA, never by `@v*` tag.
+- All repository secrets (PAT, AWS keys, cosign tokens) rotated quarterly. Prefer OIDC federation to AWS over long-lived access keys.
+- `SECURITY.md` documents the responsible-disclosure process; `security.txt` published at the repo root.
+- Branch protection on `main`: required reviews, required status checks, signed commits, no force-push.
+
+**Related:** ATK-LAT-01 (container escape), R-08 (signing key), R-13 (TLS).
 
 ---
 

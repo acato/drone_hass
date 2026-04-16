@@ -110,22 +110,26 @@ This document defines the exact contract between the MAVLink-MQTT bridge and Hom
 | `remote_rssi` | `RADIO_STATUS` | #109 | `remrssi` | Same conversion as `rssi` |
 | `noise` | `RADIO_STATUS` | #109 | `noise` | uint8, raw noise floor reading |
 
-**Note on RSSI source:** `RADIO_STATUS` (#109) is emitted by SiK-firmware radios (the 915 MHz backup link). If the primary C2 link is WiFi, `RADIO_STATUS` represents the backup link signal, not the primary.
+**Note on RSSI source:** `RADIO_STATUS` (#109) is emitted by SiK-firmware radios — **the 915 MHz primary C2 link** (architecture.md §6.3). The SiK RSSI is the safety-critical link health gauge; WiFi RSSI is informational for the secondary video path.
 
-For WiFi RSSI: the bridge should query the companion computer's WiFi interface (e.g., `iwconfig wlan0` or `/proc/net/wireless`) and merge that into the signal topic. This is NOT a MAVLink message -- it's a bridge-side measurement.
+For WiFi RSSI: the bridge should query the companion computer's WiFi interface (e.g., `iwconfig wlan0` or `/proc/net/wireless`) and merge that into the signal topic. This is NOT a MAVLink message — it's a bridge-side measurement.
 
-**Recommended MQTT payload extension for dual-link:**
+**MQTT payload (`drone_hass/{drone_id}/telemetry/link`, QoS 2, retain true):**
 
 ```json
 {
-  "primary_link": "wifi",
-  "primary_rssi_dbm": -62,
-  "backup_link": "sik_915mhz",
-  "backup_rssi_raw": 180,
-  "backup_remote_rssi_raw": 165,
-  "backup_noise_raw": 40
+  "primary_link": "sik_915",
+  "primary_rssi_raw": 180,
+  "primary_remote_rssi_raw": 165,
+  "primary_noise_raw": 40,
+  "secondary_link": {
+    "type": "wifi_5ghz",
+    "rssi_dbm": -62
+  }
 }
 ```
+
+QoS 2 (exactly-once) and `retain: true` so the last-known link state survives bridge restarts and is unambiguous on the safety path. ComplianceGate evaluates `primary_*` fields, never the secondary block. A `binary_sensor.{name}_link_degraded` fires when `primary_rssi_raw` falls below the deployment-tuned threshold for 3 s, and the bridge issues `MAV_CMD_NAV_RETURN_TO_LAUNCH` if the condition persists past `FS_GCS_TIMEOUT`.
 
 **MAVLink request rate:** `RADIO_STATUS` (#109) is autonomously emitted by the radio hardware at ~1 Hz. No interval request needed.
 
@@ -358,7 +362,7 @@ The bridge MUST:
 
 **Timeout:** 5 seconds for ACK.
 
-**Note:** RTL altitude is controlled by the ArduPilot parameter `RTL_ALT` (cm). This should be set during aircraft configuration to a value above the tallest obstacles (recommend 35m / 3500cm for this property with 100ft trees).
+**Note:** RTL altitude is controlled by the ArduPilot parameter `RTL_ALT` (cm). This must be set above the tallest obstacle plus a wind/turbulence/baro-drift margin. For this property (some trees exceed 30 m / 100 ft) the value is **5000 cm (50 m / 164 ft)** — 20 m clearance over the tallest tree. The operational area `altitude_ceiling_m` and `FENCE_ALT_MAX` must be configured together so that `FENCE_ALT_MAX > RTL_ALT + 5 m` (RTL climb does not trip the fence) and `altitude_ceiling ≥ RTL_ALT`. See `architecture.md` §11.3 for the altitude invariant and the annual tree-resurvey checklist.
 
 ### 2.6 `cancel_rth`
 
@@ -629,7 +633,7 @@ These are NOT MAVLink commands. The bridge manages the RTSP stream pipeline:
 - `start_stream`: Bridge signals the companion computer (or camera) to begin streaming, then publishes the RTSP URL to `state/stream`. If using Siyi A8 Mini, the camera streams RTSP continuously; this command may just tell go2rtc to begin pulling.
 - `stop_stream`: Bridge signals the companion to stop the stream. Updates `state/stream`.
 
-**MQTT response includes:** `{"rtsp_url": "rtsp://10.0.0.50:8554/drone"}`
+**MQTT response includes:** `{"rtsp_url": "rtsp://10.10.20.50:8554/drone"}`
 
 ### 2.17 `set_home`
 
