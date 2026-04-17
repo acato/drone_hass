@@ -17,7 +17,8 @@ from contextlib import AsyncExitStack
 import aiomqtt
 from mavsdk import System
 
-from .commands import run_consumer as run_command_consumer
+from .commands import _publish_compliance_state, run_consumer as run_command_consumer
+from .compliance import ComplianceGate, OperationalMode
 from .config import BridgeConfig
 from .log import get_logger
 from .state import DroneState
@@ -45,6 +46,11 @@ class Bridge:
         self.config = config
         self.drone = System()
         self.state = DroneState()
+        # config.compliance.mode is the Literal 'part107'/'part108'; map to enum.
+        self.gate = ComplianceGate(
+            OperationalMode.PART_107 if config.compliance.mode == "part107"
+            else OperationalMode.PART_108
+        )
         self._stack: AsyncExitStack | None = None
         self._mqtt: aiomqtt.Client | None = None
 
@@ -90,6 +96,7 @@ class Bridge:
                     break
 
             await self._publish_connection_state("online")
+            await _publish_compliance_state(self)
             await self._run_tasks()
 
     async def _publish_connection_state(self, value: str) -> None:

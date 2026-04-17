@@ -91,3 +91,56 @@ class CommandResponse(_Strict):
     success: bool
     error: str | None = None
     data: dict | None = None
+
+
+class AuthorizeFlightParams(_Strict):
+    """Params for command/authorize_flight (Part 107 RPIC tap).
+
+    Not in the original contract §2.x enumeration; added as the Part 107
+    mechanism for delivering the time-limited, single-use authorization
+    token the bridge requires before arm/takeoff (threat model §15).
+    """
+
+    rpic_id: str = Field(min_length=1, description="RPIC identifier (phone label, operator name, etc.)")
+    valid_for_s: int = Field(default=120, ge=5, le=900)
+    trigger: str = Field(default="manual", description="What triggered this authorization: 'alarm', 'manual', 'test'")
+
+
+# ---------- Compliance (contract §7.7, §9.4) ----------
+
+
+class ComplianceState(_Strict):
+    """`drone_hass/{drone_id}/state/compliance` — retained, QoS 1."""
+
+    mode: Literal["part_107", "part_108"]
+    fc_on_duty: bool
+    operational_area_valid: bool
+    authorization_active: bool
+    authorization_expires_at: int | None = None
+
+
+class SafetyGateOutcome(_Strict):
+    """Per-gate result for compliance/safety_gate events."""
+
+    battery_ok: bool
+    gps_ok: bool
+    connection_ok: bool
+    weather_ok: bool
+    daa_healthy: bool
+    operational_area_valid: bool
+    not_airborne: bool
+    dock_lid_open: bool | None = None
+    fc_on_duty: bool | None = None   # Null in Part 107
+    mission_valid: bool
+
+
+class SafetyGateEvent(_Strict):
+    """`drone_hass/{drone_id}/compliance/safety_gate` — QoS 1, contract §7.7."""
+
+    event_type: Literal["safety_gate"] = "safety_gate"
+    flight_id: str
+    outcome: Literal["pass", "fail"]
+    gates: SafetyGateOutcome
+    failed_gates: list[str]
+    timestamp: int
+    # prev_hash deliberately omitted — Phase 3 hash chain adds it.

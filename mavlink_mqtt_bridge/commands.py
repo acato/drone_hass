@@ -19,8 +19,9 @@ from typing import TYPE_CHECKING, Any
 import aiomqtt
 from pydantic import ValidationError
 
+from .compliance import ComplianceError, GateContext
 from .log import get_logger
-from .models import CommandRequest, CommandResponse, TakeoffParams
+from .models import AuthorizeFlightParams, CommandRequest, CommandResponse, TakeoffParams
 
 if TYPE_CHECKING:
     from .state import DroneState
@@ -64,13 +65,34 @@ def _require_not_flying(state: "DroneState") -> None:
         raise CommandError("already_airborne")
 
 
-def _authorize_placeholder() -> None:
-    """Replaced by ComplianceGate in Phase 0 step 7.
+async def _run_compliance_gate(bridge: Any) -> None:
+    """Invoke ComplianceGate, publish the safety_gate event, raise on fail.
 
-    Part 107 mode today: always authorizes. Part 108 mode will require an
-    active authorization token created by the HA-side notification flow.
+    Called before arm / takeoff. Success leaves the token valid but unconsumed
+    until the MAVSDK arm call actually returns without error.
     """
-    return None
+    ctx = GateContext(state=bridge.state)
+    try:
+        result = bridge.gate.authorize_flight(ctx)
+    except ComplianceError as exc:
+        raise CommandError(exc.code, exc.reason) from exc
+
+    # Publish the event regardless of outcome — the compliance record must
+    # reflect every launch attempt, passing or failing.
+    await _publish_safety_gate(bridge, result.event)
+
+    if not result.ok:
+        raise CommandError(
+            "not_authorized",
+            "failed gates: " + ", ".join(result.event.failed_gates),
+        )
+
+
+async def _publish_safety_gate(bridge: Any, event: Any) -> None:
+    topic = f"{bridge.config.base_topic}/compliance/safety_gate"
+    await bridge._mqtt.publish(
+        topic, payload=event.model_dump_json().encode("utf-8"), qos=1, retain=False
+    )
 
 
 # ---------- MAVSDK call wrapper ----------
@@ -105,8 +127,12 @@ async def _handle_arm(bridge: Any, req: CommandRequest) -> dict | None:
     if bridge.state.armed:
         raise CommandError("already_armed")
     _require_gps_fix(bridge.state)
-    _authorize_placeholder()
+    await _run_compliance_gate(bridge)
+
     await _call_action(bridge.drone.action.arm(), error_code="arm")
+    # Arm succeeded — token is now spent.
+    bridge.gate.consume_authorization()
+    await _publish_compliance_state(bridge)
     return None
 
 
@@ -118,15 +144,55 @@ async def _handle_takeoff(bridge: Any, req: CommandRequest) -> dict | None:
 
     _require_not_flying(bridge.state)
     _require_gps_fix(bridge.state)
-    _authorize_placeholder()
 
     if not bridge.state.armed:
+        # Auto-arm branch runs the full gate (+ consumes the token on success).
+        await _run_compliance_gate(bridge)
         await _call_action(bridge.drone.action.arm(), error_code="arm")
+        bridge.gate.consume_authorization()
+        await _publish_compliance_state(bridge)
 
     # set_takeoff_altitude has no ACK to wait on — it just stores the param.
     await bridge.drone.action.set_takeoff_altitude(params.altitude_m)
     await _call_action(bridge.drone.action.takeoff(), error_code="takeoff")
     return {"target_altitude_m": params.altitude_m}
+
+
+async def _handle_authorize_flight(bridge: Any, req: CommandRequest) -> dict | None:
+    try:
+        params = AuthorizeFlightParams.model_validate(req.params or {})
+    except ValidationError as exc:
+        raise CommandError("invalid_params", str(exc)) from exc
+    try:
+        token = bridge.gate.grant_authorization(
+            rpic_id=params.rpic_id,
+            valid_for_s=params.valid_for_s,
+            trigger=params.trigger,
+        )
+    except ComplianceError as exc:
+        raise CommandError(exc.code, exc.reason) from exc
+    await _publish_compliance_state(bridge)
+    return {
+        "flight_id": token.flight_id,
+        "expires_at": token.expires_at,
+    }
+
+
+async def _publish_compliance_state(bridge: Any) -> None:
+    from .models import ComplianceState   # local import to avoid cycles at module load
+
+    active, expires_at = bridge.gate.authorization_snapshot()
+    payload = ComplianceState(
+        mode=bridge.gate.mode.value,
+        fc_on_duty=getattr(bridge.gate, "_fc_on_duty", False),
+        operational_area_valid=True,   # Phase 3 — real check wired in
+        authorization_active=active,
+        authorization_expires_at=expires_at,
+    )
+    topic = f"{bridge.config.base_topic}/state/compliance"
+    await bridge._mqtt.publish(
+        topic, payload=payload.model_dump_json().encode("utf-8"), qos=1, retain=True
+    )
 
 
 async def _handle_land(bridge: Any, req: CommandRequest) -> dict | None:
@@ -148,6 +214,7 @@ HANDLERS: dict[str, Handler] = {
     "takeoff": _handle_takeoff,
     "land": _handle_land,
     "return_to_home": _handle_return_to_home,
+    "authorize_flight": _handle_authorize_flight,
 }
 
 

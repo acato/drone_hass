@@ -12,6 +12,7 @@ import pytest
 
 from mavlink_mqtt_bridge import commands
 from mavlink_mqtt_bridge.commands import CommandError, dispatch
+from mavlink_mqtt_bridge.compliance import ComplianceGate, OperationalMode
 from mavlink_mqtt_bridge.models import CommandRequest
 from mavlink_mqtt_bridge.state import DroneState
 
@@ -82,6 +83,7 @@ class FakeBridge:
     state: DroneState = field(default_factory=DroneState)
     config: FakeConfig = field(default_factory=FakeConfig)
     _mqtt: FakeMqtt = field(default_factory=FakeMqtt)
+    gate: ComplianceGate = field(default_factory=lambda: ComplianceGate(OperationalMode.PART_107))
 
 
 def _ready_state() -> DroneState:
@@ -89,6 +91,13 @@ def _ready_state() -> DroneState:
     s.gps_fix_type = 3
     s.num_satellites = 12
     return s
+
+
+def _authorized_bridge() -> FakeBridge:
+    """FakeBridge with a fresh Part 107 authorization token already granted."""
+    b = FakeBridge(state=_ready_state())
+    b.gate.grant_authorization(rpic_id="test-rpic", valid_for_s=120, trigger="test")
+    return b
 
 
 def _req(params: dict | None = None, timestamp: int | None = None) -> bytes:
@@ -110,7 +119,7 @@ def _last_response(bridge: FakeBridge) -> dict:
 
 
 async def test_arm_success_publishes_success_response() -> None:
-    b = FakeBridge(state=_ready_state())
+    b = _authorized_bridge()
     await dispatch(b, "arm", _req(), f"{b.config.base_topic}/command/arm/response")
     resp = _last_response(b)
     assert resp["success"] is True
@@ -119,7 +128,7 @@ async def test_arm_success_publishes_success_response() -> None:
 
 
 async def test_takeoff_arms_first_if_needed_and_sets_altitude() -> None:
-    b = FakeBridge(state=_ready_state())
+    b = _authorized_bridge()
     await dispatch(
         b, "takeoff",
         _req(params={"altitude_m": 15.0}),
@@ -134,7 +143,7 @@ async def test_takeoff_arms_first_if_needed_and_sets_altitude() -> None:
 
 
 async def test_takeoff_default_altitude_is_10m() -> None:
-    b = FakeBridge(state=_ready_state())
+    b = _authorized_bridge()
     await dispatch(b, "takeoff", _req(), f"{b.config.base_topic}/command/takeoff/response")
     assert b.drone.action.takeoff_alt_set == 10.0
 
@@ -254,7 +263,7 @@ async def test_stale_command_rejected() -> None:
 
 
 async def test_fresh_command_accepted() -> None:
-    b = FakeBridge(state=_ready_state())
+    b = _authorized_bridge()
     now = int(time.time())
     await dispatch(
         b, "arm", _req(timestamp=now),
@@ -272,7 +281,7 @@ async def test_invalid_envelope_drops_silently() -> None:
 
 
 async def test_correlation_id_roundtrips() -> None:
-    b = FakeBridge(state=_ready_state())
+    b = _authorized_bridge()
     req_id = "11111111-2222-3333-4444-555555555555"
     raw = json.dumps({"id": req_id}).encode("utf-8")
     await dispatch(b, "arm", raw, f"{b.config.base_topic}/command/arm/response")
@@ -296,7 +305,7 @@ def patch_action_error(monkeypatch):
 
 
 async def test_arm_failure_maps_to_arm_failed(patch_action_error) -> None:
-    b = FakeBridge(state=_ready_state())
+    b = _authorized_bridge()
     b.drone.action.arm_raises = FakeActionError("PreArm: Baro not healthy")
     await dispatch(b, "arm", _req(), f"{b.config.base_topic}/command/arm/response")
     resp = _last_response(b)
@@ -310,3 +319,112 @@ async def test_command_error_has_code_attribute() -> None:
     assert e.code == "foo"
     assert e.reason == "because"
     assert "foo" in str(e) and "because" in str(e)
+
+
+# ---------- ComplianceGate integration ----------
+
+
+async def test_arm_without_authorization_fails() -> None:
+    b = FakeBridge(state=_ready_state())   # no grant_authorization
+    await dispatch(b, "arm", _req(), f"{b.config.base_topic}/command/arm/response")
+    resp = _last_response(b)
+    assert resp["success"] is False
+    assert resp["error"] == "not_authorized"
+    assert b.drone.action.arm_calls == 0
+
+
+async def test_arm_publishes_safety_gate_event() -> None:
+    b = _authorized_bridge()
+    await dispatch(b, "arm", _req(), f"{b.config.base_topic}/command/arm/response")
+    topics = [t for t, _ in b._mqtt.published]
+    assert f"{b.config.base_topic}/compliance/safety_gate" in topics
+
+    gate_payload = next(
+        json.loads(p) for t, p in b._mqtt.published
+        if t == f"{b.config.base_topic}/compliance/safety_gate"
+    )
+    assert gate_payload["outcome"] == "pass"
+    assert gate_payload["event_type"] == "safety_gate"
+
+
+async def test_arm_consumes_token_so_second_arm_fails() -> None:
+    b = _authorized_bridge()
+    await dispatch(b, "arm", _req(), f"{b.config.base_topic}/command/arm/response")
+    assert _last_response(b)["success"] is True
+
+    # Simulate a disarm -> re-arm scenario by dropping the armed flag;
+    # the token should already be consumed, so the second arm is rejected.
+    b.state.armed = False
+    b._mqtt.published.clear()
+    await dispatch(b, "arm", _req(), f"{b.config.base_topic}/command/arm/response")
+    resp = _last_response(b)
+    assert resp["success"] is False
+    assert resp["error"] == "not_authorized"
+
+
+async def test_authorize_flight_command_grants_token() -> None:
+    b = FakeBridge(state=_ready_state())
+    await dispatch(
+        b, "authorize_flight",
+        _req(params={"rpic_id": "alice", "valid_for_s": 60, "trigger": "alarm"}),
+        f"{b.config.base_topic}/command/authorize_flight/response",
+    )
+    resp = _last_response(b)
+    assert resp["success"] is True
+    assert "flight_id" in resp["data"]
+    assert "expires_at" in resp["data"]
+    # Token now active — subsequent arm should pass
+    await dispatch(b, "arm", _req(), f"{b.config.base_topic}/command/arm/response")
+    assert _last_response(b)["success"] is True
+
+
+async def test_authorize_flight_publishes_compliance_state() -> None:
+    b = FakeBridge(state=_ready_state())
+    await dispatch(
+        b, "authorize_flight",
+        _req(params={"rpic_id": "alice"}),
+        f"{b.config.base_topic}/command/authorize_flight/response",
+    )
+    state_msgs = [
+        json.loads(p) for t, p in b._mqtt.published
+        if t == f"{b.config.base_topic}/state/compliance"
+    ]
+    assert state_msgs, "state/compliance not published"
+    latest = state_msgs[-1]
+    assert latest["mode"] == "part_107"
+    assert latest["authorization_active"] is True
+    assert latest["authorization_expires_at"] is not None
+
+
+async def test_authorize_flight_rejects_missing_rpic_id() -> None:
+    b = FakeBridge(state=_ready_state())
+    await dispatch(
+        b, "authorize_flight",
+        _req(params={"valid_for_s": 60}),   # no rpic_id
+        f"{b.config.base_topic}/command/authorize_flight/response",
+    )
+    resp = _last_response(b)
+    assert resp["success"] is False
+    assert resp["error"] == "invalid_params"
+
+
+async def test_arm_failure_does_not_consume_token() -> None:
+    """If MAVSDK arm fails, the token remains valid for a retry."""
+    import mavsdk.action as action_module
+
+    class FakeActionError2(Exception):
+        pass
+
+    original = getattr(action_module, "ActionError", None)
+    action_module.ActionError = FakeActionError2
+    try:
+        b = _authorized_bridge()
+        b.drone.action.arm_raises = FakeActionError2("PreArm: temp failure")
+        await dispatch(b, "arm", _req(), f"{b.config.base_topic}/command/arm/response")
+        assert _last_response(b)["success"] is False
+        # Token still valid
+        active, _ = b.gate.authorization_snapshot()
+        assert active is True
+    finally:
+        if original is not None:
+            action_module.ActionError = original
