@@ -19,7 +19,30 @@ End-to-end loop for Phase 0: SITL in WSL2 ↔ bridge ↔ Mosquitto (Docker).
    > Running on the Windows filesystem via `/mnt/c/...` is slower than native WSL. For faster iteration, clone the repo into `~/dji_hass` inside WSL.
 4. **Docker Desktop** — must be running on Windows with WSL2 integration enabled for the Ubuntu distro.
 
-## Running the dev loop
+## Running the dev loop — one shot (recommended)
+
+From any shell on the Windows host:
+
+```bash
+cd /c/Users/aless/dji_hass/dev
+./start-sitl-stack.sh
+```
+
+The script:
+1. Starts Mosquitto (Docker container, detached)
+2. Opens a new Windows Terminal tab running SITL (`sim_vehicle.py` with `--console --map --out=udp:127.0.0.1:14540`)
+3. Opens a new Windows Terminal tab running the bridge (`uv run python -m mavlink_mqtt_bridge --config dev/bridge.yaml`)
+4. Attaches an MQTT observer (`mosquitto_sub -t 'drone_hass/sitl1/#' -v`) to the current shell
+
+Pre-flight checks: `wt.exe`, `wsl.exe`, `docker` all in PATH; Docker daemon responding; WSL `Ubuntu` distro present. `dev/bridge.yaml` is seeded from the example on first run.
+
+Ctrl-C the observer to detach (the stack keeps running). To tear everything down:
+
+```bash
+./stop-sitl-stack.sh
+```
+
+## Running the dev loop — manual (fallback / reference)
 
 Four terminals, in this order:
 
