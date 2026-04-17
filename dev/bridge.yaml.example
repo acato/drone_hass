@@ -1,0 +1,26 @@
+# Sample bridge config for local SITL development.
+# Copy to bridge.yaml (gitignored) and edit as needed.
+
+drone:
+  id: sitl1
+  # MAVSDK default UDP listen port for SITL. Start sim_vehicle.py first; it
+  # broadcasts to 14550 (primary) and 14540 (MAVSDK). If you see no connection,
+  # run `sim_vehicle.py ... --out=udp:127.0.0.1:14540` to force the fan-out.
+  mavlink_connection: "udp://:14540"
+  system_id: 1
+  component_id: 190
+
+mqtt:
+  host: localhost
+  port: 1883
+  base_topic_prefix: drone_hass
+  client_id: mavlink_mqtt_bridge_dev
+  tls: false
+
+compliance:
+  mode: part107
+  database_path: ./data/compliance.db
+
+logging:
+  level: INFO
+  format: console

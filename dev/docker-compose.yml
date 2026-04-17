@@ -1,0 +1,25 @@
+# Local dev stack — Mosquitto only.
+# SITL runs natively in WSL2 Ubuntu (see dev/sitl-setup.md).
+# The bridge runs via `python -m mavlink_mqtt_bridge` from a uv venv.
+#
+# Usage:
+#   cd dev && docker compose up -d
+#   # connect with MQTT Explorer or `mosquitto_sub -h localhost -t '#' -v`
+#   docker compose down
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: drone_hass_mosquitto_dev
+    restart: unless-stopped
+    ports:
+      - "1883:1883"   # MQTT
+      - "9001:9001"   # MQTT over WebSocket (handy for browser tools)
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:
