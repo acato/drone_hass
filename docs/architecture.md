@@ -235,20 +235,23 @@ This is a public open-source project. Operators deploying it are responsible for
 
 These measures do not transfer legal responsibility from the operator but create a documented record that requirements were communicated.
 
-### 3.6 Jurisdiction-Hedging One-Way-Door Constraints *(Level 1–2)*
+### 3.6 One-Way-Door Constraints *(Level 1–2)*
 
-The design makes **cheap hedges** on hardware and software decisions that would be hard or expensive to reverse if a second jurisdiction is activated later. The table below captures the decisions being made now that affect both US-primary and EU-secondary deployments.
+The design makes **cheap hedges** on hardware and software decisions that would be hard or expensive to reverse if a second jurisdiction (US↔EU) or a second operating mode (Part 107 VLOS → Part 108 / EU Specific autonomous) is activated later. The table below captures the decisions being made now that affect both primary (US Part 107) and secondary (EU, autonomous) deployments.
 
 | Area | Naive default | Hedged default | Why it matters |
 |---|---|---|---|
 | Primary C2 radio | RFD900x (915 MHz, 1 W, Americas-only) | **RFD868x (868 MHz, 25 mW) or dual-band variant** | 915 MHz is not usable at ISM power levels in the EU. Same vendor, similar price. Swapping later requires re-pairing both ends. |
 | Remote ID module | FAA-certified only | **Dual-certified: FAA + ASD-STAN EN 4709-002 / Delegated Reg (EU) 2020/1058** | Dronetag / BlueMark modules carry both declarations. Minimal premium. |
 | Autopilot firmware | ArduPilot 4.4 | **ArduPilot 4.5+** | Multi-fence required for asymmetric sector-dependent altitude caps under SORA. Parameter cascade if upgraded later. |
-| Airframe payload margin | Sized to camera + comms only | **Headroom for parachute (200–500 g) + FLARM (~50 g) + independent FTS MCU (~30 g) + LTE modem (~100 g)** | ~1 kg of reserve at airframe selection avoids a full rebuild later. |
+| Airframe payload margin | Sized to camera + comms only | **Headroom for parachute (200–500 g) + FLARM (~50 g) + independent FTS MCU (~30 g) + LTE modem (~100 g) + charging-pad pogo PCB (~30 g)** | ~1 kg of reserve at airframe selection avoids a full rebuild later. |
 | Independent FTS MCU footprint | Not present | **Reserve PCB / chassis space + UART / relay line** on an autopilot-external MCU (ESP32 / STM32 with own power rail) | FTS must fire even if autopilot hangs. Retrofitting into a finished airframe is painful. |
+| **Landing-skid geometry + charging-pad layout** | Flat skids optimised for minimal weight | **Flat skid underside with 4-contact target-pad footprint** sized for pogo-pin mating. Balance-lead + main-power leads routed to those pads. | Contact-based in-dock charging is load-bearing for Part 108 / EU Specific autonomous modes. Retrofitting pads + lead routing into a finished airframe is a rebuild. See §5.10. |
+| **Precision-landing sensor mount** | Not provisioned | **Reserve mount point + I²C / serial for IR-LOCK Pixy or AprilTag camera** on the airframe bottom | Required for ±2 cm landing repeatability feeding contact charging. IR-LOCK add-on is $200; mount point is free if planned, expensive if not. See §5.10. |
 | Camera focal length | Whatever the use case wants | **Default wide-angle (≤30 mm equiv)** | GDPR identifiability argument depends on this. Telephoto payload changes the DPIA calculus. |
 | Gimbal | Any | **Real-time queryable attitude (MAVLink-native / SBUS)** | Geospatial / FOV-sector privacy masking requires per-frame gimbal state. Closed-API gimbals foreclose the privacy mask. |
-| Autopilot UART budget | Consume as needed | **Reserve 1 UART for FLARM, 1 for LTE C2** | Pixhawk 6C has 7 serial ports. Budget them at design time rather than fighting cable runs later. |
+| Autopilot UART budget | Consume as needed | **Reserve 1 UART for FLARM, 1 for LTE C2, 1 for precision-landing sensor** | Pixhawk 6C has 7 serial ports. Budget them at design time rather than fighting cable runs later. |
+| **Battery pack spec** | Generic hobby 6S LiPo | **BMS-equipped 6S Tattu Pro or LiFePO4 equivalent**; balance lead routed to pad contacts | Unattended in-dock charging safety case depends on BMS. Standardising one product line now avoids a pack-spec migration later. See §5.10. |
 | Compliance recorder schema | Single-tier chain + inline blobs | **Two-tier: immutable metadata chain + deletable blob tier** — see [`compliance-recorder-two-tier.md`](compliance-recorder-two-tier.md) | Retrofitting tier-2 later means migrating the chain. Biggest software one-way-door. Applicable in US mode too — routine footage retention is expensive and legally risky even under FAA-only. |
 | Privacy masking | Post-hoc in HA or absent | **Pre-record in the RTSP pipeline (go2rtc / mediamtx)** | If frames are recorded unmasked, the raw exists and is GDPR-scoped. Architectural. |
 | `OperationalMode` enum | `PART_107`, `PART_108` only (`mavlink_mqtt_bridge/compliance.py`) | Extensible — no `assert mode in (…)` patterns in callers | `EU_SPECIFIC_SORA` drops in cleanly. Current shape is already extensible; preserve the property. |
@@ -571,6 +574,100 @@ Static assignment. If the operator brings up a new neighbour AP that takes chann
 - Route the dock's IPEX antenna feed away from PoE magnetics and any switching supplies; ferrite on the PoE cable entry to the enclosure.
 - ESPHome YAML must declare `ethernet:` block **before** `wifi:` so the dock comes up wired-first and only attempts WiFi as fallback.
 
+### 5.10 In-Place Charging System
+
+**Purpose:** Eliminate the operator-on-site battery swap as a blocker for autonomous operation. Under Part 107 with an RPIC on-site every flight, manual swap is acceptable. Under Part 108 and EU Specific — where the whole point is alarm-triggered autonomous flight with no on-site human — **in-place charging is load-bearing**. A drone that needs a human hand on it every 20 minutes is not autonomous.
+
+This supersedes the earlier position in §7.4 that ruled out DIY charging contacts. That position was written when the target airframe was a DJI Mavic 2 whose battery contract we did not control. For the current custom ArduPilot airframe we own the contacts, the battery chemistry, and the charger — it's an engineering task, not a hack.
+
+#### Contact mechanism
+
+| Element | Spec | Notes |
+|---|---|---|
+| Pad-side contacts | 4 × spring-loaded pogo pins, 2–3 mm compression travel, 10 A continuous | 2 for +pack / −pack, 2 for balance-bus +/− (per-cell voltage monitoring during charge). Gold-plated brass for corrosion resistance |
+| Aircraft-side pads | Copper or brass pads on landing-skid underside, same 4-count layout, shielded from prop wash | Conformal-coated PCB with masked contact zones. Pads recessed ~1 mm to prevent abrasion during touchdown |
+| Alignment tolerance | ±10 mm (contact-zone diameter matches pogo-pin shoulder radius) | Within ArduPilot precision-landing accuracy — see below |
+| Mating force | ~2 N per pin = ~8 N total on skids | Aircraft mass (~3–5 kg) holds contact firmly; no actuation required |
+| Weatherproofing | Pogo pins behind a thin rubber flap that the skids press open; not required if dock lid is closed during charge (normal case) | |
+
+#### Precision landing is a prerequisite
+
+ArduPilot native precision landing via **IR-LOCK Pixy** or **AprilTag** bridge brings repeatability to **<5 cm, typically <2 cm** in 8+ m/s wind tests. The ±10 mm pogo tolerance requires <2 cm 2D landing error, achievable with IR-LOCK and a tuned descent rate. Without precision landing, contact-based charging is not reliable.
+
+Budget implications:
+
+- IR-LOCK Pixy or equivalent IR beacon: ~$200 + ~$30 in beacon LEDs on the dock pad
+- ArduPilot `PLND_ENABLED` + `PLND_TYPE` parameters
+- Bridge-side `mission_primitive: land_on_pad` (not currently in the MQTT contract)
+
+The `mavlink-mqtt-contract.md` addition for `land_on_pad` is the Phase-2+ software work item that unlocks the hardware.
+
+#### Smart charger (primary path)
+
+| Element | Spec | Cost |
+|---|---|---|
+| Charger | **iCharger 4010 Duo**, **ToolkitRC M8 / M9**, or **Hyperion DUO3 MK2**. 6S capable, 10–15 A, balance-charging, UART telemetry | $150–300 |
+| Charger mount | Inside dock electronics bay, thermally isolated from battery bay (separate cement-board compartment). Heat-sinked to case | |
+| AC input | 120 V / 230 V via ESPHome-controlled contactor. **Hardware interlock cuts AC on smoke, overtemp, or ESP32 watchdog expiry** — not software. | |
+| DC output | To pogo pins via short heavy-gauge lead. Fusing per pack: 20 A slow-blow at pack side | |
+| Telemetry | UART → ESP32 → `sensor.dock_charger_cell1..6_voltage`, `sensor.dock_charger_current`, `sensor.dock_charger_temp`, `sensor.dock_charger_status` | |
+| Charge termination | Charger native CC/CV/balance termination at 4.15 V per cell (LiPo) or 3.55 V (LiFePO4). **Plus**: ESP32 hard-cuts AC if any cell exceeds 4.25 V or cell imbalance >100 mV | |
+
+#### Battery pack specification
+
+The custom airframe lets us standardise on a **BMS-equipped** pack, which eliminates most of the historical LiPo-in-dock fire risk:
+
+- **6S LiPo Tattu Pro** or equivalent, **built-in BMS** with per-cell monitoring, over-voltage / under-voltage / overtemp / overcurrent cutoffs
+- Balance lead exposed to the aircraft-side pogo contacts (standard JST-XH pinout brought out to pogo pads)
+- Main power lead same, via XT60 or XT90 internal, pogo externally
+- **LiFePO4 alternative** worth considering for the docked pack: ~30% more mass for the same mission time, but **no thermal runaway**. This is a real hedge for unattended outdoor charging — worth the weight trade for the safety case. Verify mission-time impact during flight-test phase.
+
+#### Safety chain (additive to existing §5.3)
+
+The existing dock safety stack (cement board, steel tray, smoke detector, overtemp cutoff) carries forward. Charging adds:
+
+- **Per-cell voltage monitoring** during charge (free via balance lead). Cell imbalance >100 mV, cell > 4.25 V, or cell < 3.0 V triggers ESP32 AC-cut.
+- **Charger fault UART** watched by ESP32; any charger-reported fault triggers AC-cut + notification.
+- **Charge-bay temperature** sensor (dedicated, not the existing interior sensor). >50 °C triggers AC-cut.
+- **Charging timeout**: max 150 minutes per charge cycle. A healthy 10 Ah pack at 5 A charges in ~2 h; 2.5 h is a fault condition.
+- **ESP32 watchdog**: if firmware hangs mid-charge, relay defaults to OPEN (AC disconnected).
+- **Quarterly deep-cycle / balance check**: operator is notified to remove pack and deep-cycle in an external cradle. Reduces BMS drift over long-term dock residency.
+
+#### ESPHome integration
+
+The existing `switch.dock_charger_power` entity (§5.5) is retained. Added entities:
+
+| Entity | Type | Purpose |
+|---|---|---|
+| `sensor.dock_charger_cell1_voltage` … `cell6_voltage` | Voltage | Per-cell monitoring during charge |
+| `sensor.dock_charger_current` | Current | Live charge current |
+| `sensor.dock_charger_temp` | Temperature | Charger case temperature |
+| `sensor.dock_charger_status` | Enum | `idle / charging / balancing / complete / fault` |
+| `sensor.dock_pack_soc_estimate` | Percent | Operator-readable SOC |
+| `sensor.dock_charge_cycle_count` | Counter | Pack-age tracking for §7 rotation |
+| `binary_sensor.dock_charge_fault` | Binary | AC-cut condition active |
+
+All entities feed the compliance recorder: every charge cycle produces a `pack_charge_event` record with start/end SOC, max-imbalance, max-temperature, duration, and termination reason. Supports §11 audit trail and OSO #10 (safe recovery) evidence for EU SORA.
+
+#### Trickle / top-off fallback
+
+A simpler path — CV/CC supply at pack voltage, current-limited to ~C/10 (~1 A for a 10 Ah pack) — can top-off a nearly-full pack without a smart charger. **Not recommended as primary** because it does not balance cells, so pack imbalance drifts over weeks until BMS cutoff. Possible as a supplement between full-balance cycles, with operator-visible "balance due" scheduling. Saves the charger cost (~$150–300) but risks premature pack retirement.
+
+#### Operations model
+
+| Cycle | Duration | Operator action |
+|---|---|---|
+| Normal post-flight | 60–120 min | None — drone lands on pad, bridge triggers charge, dock reports SOC to HA |
+| Daily maintenance | 0 | None — charger holds pack at 80% storage SOC when dock is idle |
+| Quarterly deep cycle | ~2 h in external cradle | Operator removes pack, runs deep-cycle, re-installs |
+| Pack end-of-life | Annual (LiPo) / biennial (LiFePO4) | Operator replaces pack; new pack pairs with dock via HA config |
+
+This shifts operations from "weekly operator swap, every week, forever" to "no-touch between flights, quarterly maintenance, annual replacement." Materially better for autonomous use cases; roughly equivalent operator burden for pure Part 107 VLOS use since the RPIC is on-site for each flight anyway.
+
+#### Deferred: robotic battery swap
+
+Full robotic swap (Skydio Dock-style) remains out of scope — mechanism complexity outweighs the benefit for a small-scale deployment. In-place charging with annual operator-swap is the operational sweet spot. If a future deployment needs truly operator-free operation longer than one pack lifespan, robotic swap can be revisited.
+
 ---
 
 ## 6. Platform Strategy
@@ -729,37 +826,75 @@ The software stack is airframe-agnostic — switching frames requires mechanical
 
 LiPo batteries degrade quickly when stored at high charge. They self-discharge (generating heat), bloat after relatively few cycles, and are designed for intermittent recreational use — not persistent readiness.
 
-**Design mindset: batteries are consumables.** Plan for annual replacement.
+**Design mindset: batteries are consumables.** Plan for annual replacement of LiPo packs, ~biennial for LiFePO4.
 
-### 7.2 Charge Strategy
+### 7.2 Operational Mode
+
+The project supports two battery-operations modes, aligned to the compliance mode in §3.4:
+
+**Autonomous mode (Part 108 / EU Specific — primary target):**
+
+The pack stays in the drone. The drone lands on the pad, contacts mate with pogo pins, the smart charger balances and holds at storage SOC between missions. See §5.10 for hardware detail.
+
+| Role | SOC Target | Location | Operator action |
+|---|---|---|---|
+| Mission ready | 80–85% | Installed in drone on pad | None — maintained by in-dock charger |
+| Storage idle (between days) | 55–65% | Installed in drone on pad | None — charger holds SOC |
+| Deep-cycle maintenance | Full cycle | External cradle | Quarterly — operator removes pack, cycles in external cradle, re-installs |
+| Replacement | New pack | — | Annual (LiPo) / biennial (LiFePO4) |
+
+**Inventory:** 1–2 packs in rotation. Keeping a spare accelerates recovery from a pack-degradation event but is not required for continuous operation.
+
+**Manual mode (Part 107 VLOS, no in-dock charger):**
+
+The RPIC is on-site for every flight under Part 107 anyway, so operator-swap is operationally acceptable and saves the $150–300 smart-charger cost. This is the simpler path for Part-107-only deployments that do not plan to migrate to autonomous.
 
 | Role | SOC Target | Location | Rotation |
-|------|------------|----------|----------|
-| Hot standby (installed in drone) | 80-85% | In dock | Rotated weekly |
-| Ready spare | 55-65% (storage band) | In charging area inside dock | Promoted to standby weekly |
-| Charging / cooling | Cycling | Charging area | As needed |
+|---|---|---|---|
+| Hot standby (installed in drone) | 80–85% | In dock | Rotated weekly |
+| Ready spare | 55–65% (storage band) | In charging area inside dock | Promoted to standby weekly |
+| Charging / cooling | Cycling | External cradle | As needed |
 
-**Inventory:** 3 batteries minimum.
+**Inventory:** 3 batteries minimum in this mode.
 
 ### 7.3 Automated Maintenance (via HA)
 
+**Autonomous mode:**
+
 | Automation | Trigger | Action |
-|------------|---------|--------|
+|---|---|---|
+| Charge-on-land | Bridge publishes `state/landed` + pack SOC <80% | Enable `switch.dock_charger_power`, log `pack_charge_event` start |
+| Charge termination | Charger reports `complete` or cell >4.25 V | Cut `switch.dock_charger_power`, log `pack_charge_event` end |
+| Storage-SOC hold | Pack idle ≥ 2 h post-charge above 80% | Discharge to 65% via charger discharge function (where supported) |
+| Thermal gating | Charge-bay temp outside 5–40 °C | Refuse charge enable; AC stays off |
+| Cell-imbalance alert | Max-min cell delta > 80 mV | Notify operator; flag for balance cycle |
+| Pack-cycle tracking | Each complete charge cycle | Increment `sensor.dock_charge_cycle_count` |
+| Pack end-of-life | Cycle count > threshold OR capacity <80% nominal | Notify operator to replace pack |
+| Quarterly deep cycle | Schedule (quarterly) | Remind operator to deep-cycle pack in external cradle |
+
+**Manual mode** (additive to or replacing the above):
+
+| Automation | Trigger | Action |
+|---|---|---|
 | Weekly rotation reminder | Schedule (Sunday AM) | Notify operator to swap batteries |
 | Charge maintenance | Standby drops below 75% | Enable charger power outlet for bounded window |
-| Thermal gating | Dock temp outside 5-40 C | Disable charger power |
-| Quarterly deep cycle | Schedule (quarterly) | Remind operator to full cycle all packs |
 | Swelling/degradation check | Every rotation | Visual inspection checklist notification |
 
 **Note:** Monitor standby battery SOC more frequently than weekly — LiPo self-discharge may drop below the 75% threshold before weekly rotation, especially in warmer conditions.
 
-### 7.4 What NOT To Attempt
+### 7.4 Deferred and Reconsidered
 
-- Permanent powered drone in dock
-- DIY charging contacts on the aircraft
-- Robotic battery swapping
-- Unattended overnight charging cycles
-- Third-party batteries in a dock scenario (highest failure item in unattended deployments)
+Items historically flagged as "do not attempt" — the list reflected a DJI Mavic 2 target airframe and a Part-107-only operational scope. The custom ArduPilot airframe and dual-jurisdiction autonomy framing changes the calculus on several:
+
+| Item | Historical position | Current position |
+|---|---|---|
+| Permanent powered drone in dock | Ruled out — fire risk | **Deferred / distinct.** Permanent power is different from periodic-charge-to-hold. Pack is not continuously under charge; it sits at storage SOC with charger idle except during top-off cycles. Safety case rests on the BMS pack + ESP32 hard-cut AC interlocks (§5.10). |
+| DIY charging contacts on the aircraft | Ruled out — we don't own the airframe | **In scope** — custom airframe, designed-in pogo-pad interface. See §5.10. |
+| Robotic battery swapping | Ruled out — complexity | **Still out of scope.** In-place charging delivers most of the operational benefit at a fraction of the mechanism cost. Revisit only if autonomous operation exceeds pack lifespan. |
+| Unattended overnight charging cycles | Ruled out — fire risk, no supervision | **In scope with safety chain.** BMS pack + ESP32 hard-cut AC + charge-bay overtemp cutoff + smoke detector + cement-board isolation. Charging timeout limits cycle duration. This is the same safety envelope commercial drone-in-a-box systems operate under. |
+| Third-party batteries in a dock scenario | Ruled out — quality-variance failure | **In scope with spec.** Standardise on one BMS-equipped product line (Tattu Pro 6S or equivalent). "Third-party" was shorthand for "arbitrary hobby LiPo"; with a controlled spec the fire/failure case is manageable. |
+
+The remaining hard constraint is **pack replacement is still a human task**. LiPo chemistry ages out in 200–400 cycles regardless of how well the dock charges; LiFePO4 in 1000–2000. Fully operator-free operation has an upper bound of one pack lifespan.
 
 ---
 
@@ -1859,12 +1994,14 @@ The system is built around **interfaces, not a specific drone**:
 | Abstraction | What Changes on Aircraft Swap |
 |-------------|-------------------------------|
 | Landing pad geometry | Adjustable alignment guides |
-| Battery type/charging | Swap charger on smart outlet |
+| Charging-pad contact layout (§5.10) | Swap pogo-pin pad block; reconfigure per new airframe skid geometry |
+| Battery pack type (§7) | Re-spec BMS pack + charger profile; ESPHome re-discovers cell count |
+| Precision-landing sensor | IR-LOCK / AprilTag mount re-worked per airframe; ArduPilot `PLND_*` params re-tuned |
 | MQTT topics | Same protocol, new `drone_id` |
 | Mission definitions | Same JSON format, new waypoints for new flight characteristics |
 | MAVLink bridge | Same code — MAVLink is the standard |
 | HA integration | Unchanged (MQTT abstraction) |
-| Dock | Unchanged (aircraft-agnostic) |
+| Dock enclosure | Unchanged (aircraft-agnostic beyond the contact pad subsystem) |
 
 ### 15.2 Multi-Aircraft Support
 
@@ -2009,9 +2146,9 @@ When evaluating successor aircraft, prioritize:
 |-----------|---------------|
 | Aircraft (X500 V2 + Pixhawk + companion + camera) | $1,700-$2,750 |
 | ADS-B In receiver (pingRX) | $250-$350 |
-| Remote ID module | $100-$150 |
+| Remote ID module (dual-cert FAA + EU) | $100-$200 |
 | Anti-collision strobe | $30-$80 |
-| Batteries (3x 4S 5200mAh) | $120-$200 |
+| Batteries (2x BMS-equipped 6S Tattu Pro or LiFePO4) | $250-$450 |
 | RC transmitter + receiver (manual backup) | $150-$250 |
 | Weatherproof dock enclosure + lid | $300-$900 |
 | Dock heating + ventilation | $150-$400 |
@@ -2019,12 +2156,17 @@ When evaluating successor aircraft, prioritize:
 | Smart power + UPS | $300-$800 |
 | Lid actuator + mechanism | $200-$600 |
 | Landing pad + alignment | $100-$300 |
+| **Charging subsystem** (smart charger + pogo contact hardware + wiring + per-cell-monitoring ESP32 support) — required for Part 108 / EU Specific autonomous operation, optional for Part-107-only VLOS | **$350-$600** |
+| **Precision-landing sensor** (IR-LOCK Pixy or AprilTag) — required paired with in-dock charging | **$200-$300** |
 | ESP32 + wiring + misc | $100-$200 |
 | Weather station (anemometer + rain) | $200-$400 |
 | ADS-B ground receiver (optional) | $50-$150 |
 | Aircraft weatherproofing (conformal coat, sealant, enclosures, dielectric grease) | $100-$250 |
 | Spare parts budget (incl. annual motor replacement) | $400-$700 |
-| **Total** | **$4,500-$8,850** |
+| **Total (Part-107 VLOS, manual-swap mode)** | **$4,700-$9,200** |
+| **Total (Part 108 / EU Specific, autonomous with in-dock charging)** | **$5,250-$10,100** |
+
+Compared with the original v0.4.0 BOM ($4,500–$8,850), the autonomous-mode delta is ~$550–1,250: BMS-equipped packs, charging subsystem, and precision-landing sensor. The Part-107-manual mode remains roughly the same budget as before (small uptick for BMS packs).
 
 ### vs. Commercial Autonomous Platforms
 
