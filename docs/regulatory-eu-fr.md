@@ -66,7 +66,7 @@ A candidate site on the eastern Riviera (e.g., Menton) is far enough from LFMN t
 
 ### 3.3 Historical phase-out: S1 / S2 / S3 scenarios
 
-France maintained national scenarios (*scénarios nationaux* S1, S2, S3) pre-EASA, broadly analogous to today's STS. These are being phased out as EASA STS + PDRA take effect. Any current submission should target **PDRA-S02** (BVLOS with airspace observers, ≤4 kg, sparsely populated — **no C-class marking required**, open to Article-14 privately-built UAS) as the first choice, with **full SORA operational authorisation** as fallback. Legacy S-authorisations remain valid during the transition but are not the right target for new work.
+France maintained national scenarios (*scénarios nationaux* S1, S2, S3) pre-EASA, broadly analogous to today's STS. These are being phased out as EASA STS + PDRA take effect. Any current submission should target **PDRA-S02** (BVLOS with airspace observers in a controlled ground area, sparsely populated environment; UAS MTOM ≤25 kg, max dimension ≤3 m, ≤120 m AGL — **no C-class marking required**, open to Article-14 privately-built UAS; note PDRA-S02 prohibits autonomous operations — remote pilot retains intervention capability) as the first choice, with **full SORA operational authorisation** as fallback for operations outside the PDRA-S02 envelope (including truly unattended autonomy). Legacy S-authorisations remain valid during the transition but are not the right target for new work.
 
 ---
 

@@ -93,11 +93,21 @@ A 1-acre property is ~64 m × 64 m square. At 50 m AGL the south GRB alone consu
 
 **Evaluate PDRA-S02 first, then fall back to full SORA.** Prior versions of this document walked directly to full SORA claiming STS/PDRA were both blocked by lack of C-class marking. That was a doctrinal error — corrected in [`regulatory-eu.md §4.3`](regulatory-eu.md). STS requires C5/C6 marking; **PDRA-S01/S-02 do not**.
 
-**PDRA-S02** covers BVLOS with airspace observers over a controlled ground area, sparsely populated environment, ≤4 kg MTOM. Lavagna's geometry (orchards E/W, 91 m setback N, public road S) plausibly qualifies as "sparsely populated" for PDRA-S02 purposes with the same mitigations we'd bring to a SORA. An airspace observer is a human role — for the perimeter-patrol use case this is the RPIC or a designated observer on-site during flight windows, which fits the stepping-stone operational model.
+**PDRA-S02** covers BVLOS with airspace observers in a **controlled ground area located in a sparsely-populated environment**. Per EASA's PDRA-S02 text, the envelope is:
+
+- UAS MTOM **≤ 25 kg**
+- Maximum characteristic dimension **≤ 3 m**
+- Altitude typically **≤ 120 m AGL**
+- Airspace observers to identify conflicting traffic
+- Remote pilot retains the ability to maintain control — **no autonomous operations** per PDRA-S02's own terms
+
+The project's ~2–5 kg multirotor and 1-acre operational volume fit well inside the PDRA-S02 envelope (earlier drafts of this document incorrectly stated "≤4 kg" — the actual PDRA-S02 MTOM limit is 25 kg). Lavagna's geometry (orchards E/W, 91 m setback N, public road S) plausibly qualifies as "sparsely populated" for PDRA-S02 purposes with the same mitigations we'd bring to a SORA. An airspace observer is a human role — for the perimeter-patrol use case this is the RPIC, the Flight Coordinator, or a designated observer on-site during flight windows, retaining intervention capability.
+
+**Autonomy caveat — important.** PDRA-S02 prohibits "autonomous operations" in the sense of operations with no pilot / observer able to intervene. The project's "alarm-triggered mission, Flight Coordinator on duty retaining override" architecture (§3.4 of `architecture.md`) maps to PDRA-S02's supervised-autonomy model. **A truly unattended, no-human-in-loop flight while the operator is away is NOT PDRA-S02 territory** — that would require a bespoke full-SORA authorisation with ENAC and appropriate OSO-evidence demonstrating equivalent safety, and it is a more expensive / longer path than PDRA-S02. Every deployment decision should be explicit about which model is in play.
 
 **Verify with ENAC at pre-consultation** whether PDRA-S02 is accepted for Article-14 privately-built UAS under ENAC's current interpretation. EASA AMC1 does not condition PDRA on C-class marking; some national CAAs have interpreted PDRA eligibility more narrowly in practice. This is a verify-before-relying item.
 
-**Full SORA remains the documented fallback** and the rest of §4 and §5 walk through it. If PDRA-S02 is accepted, most of the SORA methodology still applies (ConOps, OSO evidence, ERP, etc.) but without the full 10-step risk assessment — the operator files a compliance statement against the PDRA rather than constructing an iGRC/SAIL derivation from scratch. ENAC timeline and fees for PDRA-declarations are typically **lighter than full SORA** (weeks rather than months; fees in the low hundreds of euros rather than €400–800).
+**Full SORA remains the documented fallback** for operations whose geometry or autonomy model does not fit PDRA-S02. The rest of §4 and §5 walk through full SORA in detail. If PDRA-S02 is accepted, most of the SORA methodology still applies (ConOps, OSO evidence, ERP, etc.) but without the full 10-step risk assessment — the operator files a compliance statement against the PDRA rather than constructing an iGRC/SAIL derivation from scratch. ENAC timeline and fees for PDRA-declarations are typically **lighter than full SORA** (weeks rather than months; fees in the low hundreds of euros rather than €400–800).
 
 ## 4.a SORA Assessment — SAIL II (fallback, if PDRA-S02 is not accepted)
 

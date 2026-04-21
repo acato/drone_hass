@@ -34,7 +34,7 @@ This document is a **pressure test of the `drone_hass` design against the Europe
 |---|---|
 | Does the Open category work for autonomous BVLOS perimeter patrol? | **No.** BVLOS breaks Open. A2 is VLOS-only; A3 requires 150 m from residential areas. |
 | Does the Certified category apply? | No. Not transporting people or dangerous goods. |
-| Does Specific category work? | **Yes, via PDRA-S02 as the primary path.** Order: (1) **PDRA-S02** — Predefined Risk Assessment for BVLOS with airspace observers, sparsely populated, ≤4 kg, ≤120 m AGL. **Does NOT require C-class marking**; per EASA, PDRA gives flexibility for UAS that are not C5/C6-marked, open to Article-14 privately-built builds like this project. This is the primary path. (2) **Full SORA operational authorisation** — fallback when PDRA operational conditions don't fit. (3) **STS-01/02** — declarative scenarios requiring C5/C6 class marking; **closed for self-built ArduPilot**, but this does not block PDRA or full SORA. See §4.3. |
+| Does Specific category work? | **Yes, via PDRA-S02 as the primary path *for pilot-in-the-loop operation*.** Order: (1) **PDRA-S02** — Predefined Risk Assessment for BVLOS with airspace observers in a controlled ground area, sparsely populated environment, UA MTOM ≤25 kg, max dimension ≤3 m, ≤120 m AGL. **Does NOT require C-class marking**; per EASA, PDRA gives flexibility for UAS that are not C5/C6-marked, open to Article-14 privately-built builds. **But PDRA-S02 prohibits "autonomous operations"** — the remote pilot must retain control/intervention capability. Suitable for the project's "airspace observer on duty, mission pre-programmed, pilot retains override" operational model; **not** suitable for a fully autonomous no-human-in-loop model. (2) **Full SORA operational authorisation** — fallback when PDRA operational conditions don't fit, **including the autonomy constraint**: a true no-human-in-loop autonomy model requires a bespoke SORA submission with appropriate OSO robustness, not PDRA-S02. (3) **STS-01/02** — declarative scenarios requiring C5/C6 class marking; **closed for self-built ArduPilot**, but this does not block PDRA or full SORA. See §4.3. |
 | Realistic SAIL target | **SAIL II** achievable with appropriate mitigations; SAIL III is fallback. Site geometry is decisive (see country specialisations). |
 | Architectural mapping | **EU Specific operational authorisation ≈ US Part 108 permit.** Same software shape (pre-approved volume, human monitors without gating, mandatory logging). Compliance-store and privacy semantics differ. |
 | Does FAA Part 107 transfer? | **No.** Operator re-qualifies via the national CAA (A2 CofC + STS/Specific theoretical exam). |
@@ -94,11 +94,21 @@ Certified targets transport of people, dangerous goods, or operations where risk
 
 ### 4.3 Specific-category pathways — ordered primary → fallback → closed
 
-**Primary: PDRA-S02** — this is the viable path for this project.
+**Primary: PDRA-S02** — this is the viable path for this project's operational profile.
 
-**PDRA-S02** (Predefined Risk Assessment, Appendix 1 to AMC1 Article 11 of Reg (EU) 2019/947) covers BVLOS operation with airspace observer(s) in a controlled or sparsely-populated environment, aircraft ≤4 kg MTOM, ≤120 m AGL. **PDRA-S02 does not require C5/C6 class-marked aircraft.** EASA's own STS/PDRA materials state that PDRA gives operators "flexibility to use UAS that do not need to be marked as class C6," setting operational and technical requirements directly instead. The PDRA is available to Article-14 privately-built UAS that meet the PDRA's technical requirements. Operator files an authorisation request citing the PDRA rather than constructing a full SORA; NAA review is lighter (typically weeks, lower fees) than full SORA.
+**PDRA-S02** (Predefined Risk Assessment, Appendix 1 to AMC1 Article 11 of Reg (EU) 2019/947) covers **BVLOS operation with airspace observers** in a controlled ground area located in a sparsely-populated environment. The envelope set by EASA's PDRA-S02 text is:
 
-**PDRA-S01** analogously corresponds to STS-01 (VLOS, controlled ground area, ≤4 kg) and is available for VLOS operations on the same basis — **no C-class marking required**.
+- UAS **MTOM ≤ 25 kg**
+- Maximum characteristic dimension **≤ 3 m**
+- Maximum altitude typically **≤ 120 m AGL**
+- Airspace observers to identify conflicting traffic; remote pilot retains the ability to maintain control
+- **No autonomous operations** (see §4.3.1 below — this is a decisive constraint on the project's operational model under PDRA-S02)
+
+**PDRA-S02 does not require C5/C6 class-marked aircraft.** EASA's own STS/PDRA materials state that PDRA gives operators flexibility to use UAS that are not class-labelled — PDRA sets operational and technical requirements directly. The PDRA is available to Article-14 privately-built UAS that meet the PDRA's technical and operational conditions. Operator files an authorisation request citing the PDRA rather than constructing a full SORA; NAA review is lighter (typically weeks, lower fees) than full SORA.
+
+**PDRA-S01** analogously corresponds to STS-01: **VLOS** operation in a controlled ground area, UA MTOM and dimension within the same STS-01-equivalent envelope (up to 25 kg in principle, specific conditions apply). Available for VLOS operations on the same basis — **no C-class marking required**.
+
+**Correction from earlier drafts.** Prior versions of this document described PDRA-S02 as "≤4 kg, sparsely populated." The ≤4 kg figure was an error — EASA PDRA-S02's actual envelope is MTOM ≤25 kg, characteristic dimension ≤3 m. The understatement did not create a compliance risk in the narrow sense but did distort the design envelope (the project's aircraft comfortably fits PDRA-S02's actual dimensions).
 
 **Fallback: full SORA operational authorisation** — if a deployment's geometry or autonomy model doesn't fit PDRA-S02 (e.g., no airspace observer, wider operational volume, higher SAIL than PDRA permits), the operator constructs a bespoke SORA submission. Still viable, more engineer-time and NAA-review-time than PDRA.
 
@@ -113,6 +123,19 @@ Certified targets transport of people, dangerous goods, or operations where risk
 Prior drafts of this document incorrectly grouped STS and PDRA together as "blocked by lack of C-class marking," which contradicted EASA's published guidance. The correct framing is as above — evaluate PDRA-S02 first.
 
 **Note on national interpretation**: EASA AMC1 makes PDRAs available to UAS meeting the PDRA's technical requirements without requiring C-class marking. **National CAAs occasionally interpret Article 14 and PDRA eligibility more narrowly in practice**, particularly around airframe-conformity evidence. This is a verify-before-relying item: confirm with the national CAA (ENAC, DGAC, LBA/Länder respectively) at pre-consultation that PDRA-S02 is accepted for the specific Article-14 airframe.
+
+#### 4.3.1 Autonomy constraint under PDRA-S02 — decisive for this project
+
+EASA's PDRA-S02 text prohibits **"autonomous operations"** and requires the remote pilot to **retain the ability to maintain control** of the UAS at any time. Practically this means:
+
+- **Compatible with PDRA-S02**: alarm-triggered pre-authorised mission execution with **an airspace observer and/or the remote pilot on duty during the flight window**, able to intervene (override, abort, RTL, land) at any time. This is the operational model this project has been designing around — the "Flight Coordinator monitors without gating each flight" model in architecture.md §3.4 maps to PDRA-S02 if the Flight Coordinator / airspace observer is interpreted as the human retaining intervention capability.
+- **Not compatible with PDRA-S02**: a fully autonomous model with **no human on duty** during flight (no airspace observer, no pilot able to intervene) — e.g., an alarm triggers flight while the operator is away with no on-duty human monitoring the operation. This is a **higher-autonomy model than PDRA-S02 permits** and requires either (a) a bespoke full-SORA operational authorisation with appropriate OSOs demonstrating equivalent safety, or (b) a waiver/approval pathway specific to the national CAA.
+
+**Terminology clarification across the project docs.** Earlier drafts used "fully autonomous under EU Specific" as a headline feature. That was imprecise. The defensible statement is:
+
+> Under PDRA-S02: **alarm-triggered autonomous mission execution, with an airspace observer / Flight Coordinator on duty retaining intervention capability throughout the flight window.** Under full SORA: higher-autonomy models (including truly unattended operation) may be achievable but require bespoke risk assessment and NAA approval at higher SAIL; this is not the PDRA-S02 primary path.
+
+The U.S. Part 108 "Flight Coordinator monitors, does not gate each flight" model maps to the PDRA-S02 shape — there is still a human on duty who can intervene; what disappears is the per-flight human authorisation. Both US Part 108 and EU PDRA-S02 sit at **supervised autonomy**, not unattended autonomy.
 
 ### 4.4 Accepted one-way-doors
 
