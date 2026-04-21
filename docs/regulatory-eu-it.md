@@ -205,15 +205,17 @@ GDPR Art. 2(2)(c) excludes "purely personal or household activity." Italian Gara
 
 The landowner becomes a **data controller**.
 
-### 6.2 Videosorveglianza guidance — DPIA working assumption, not drone-specific law
+### 6.2 Videosurveillance source — counsel-required inference, not drone-specific rule
 
-Garante's *Provvedimento 11 ottobre 2018* on videosorveglianza sets retention defaults **for fixed CCTV**:
+**Citation correction from earlier drafts.** Prior versions of this document cited "Provvedimento 11 ottobre 2018 on videosorveglianza" as the authoritative baseline for retention defaults. That was a sourcing error. The general authoritative baseline is Garante's **Provvedimento 8 aprile 2010** ("*Provvedimento in materia di videosorveglianza*"), which remains the reference general provision on video surveillance; later Garante items dated 2018 are **site-specific preliminary-verification decisions** (*provvedimenti preliminari di verifica*) rather than the general baseline source. Subsequent Garante FAQs, sectoral guidance, and GDPR-era reinterpretations supplement the 2010 provision but do not replace it as the source of the general retention framework.
 
-- **24 hours** default for routine surveillance.
-- **Max 7 days** without specific justification.
-- Longer retention only for incident-linked footage.
+Garante's general CCTV framework establishes, in broad terms:
 
-**Important framing:** this is CCTV guidance, not a drone-specific published rule. **The retention windows used throughout this document (24–72 h default, 30–90 d for privileged footage, etc.) are DPIA working assumptions derived by analogy from the videosorveglianza guidance — they are not settled drone-specific law.** The Garante has aggressive enforcement when triggered but has issued limited drone-specific published guidance; any deployment must treat these numbers as a starting posture subject to:
+- **Short default retention** (typically 24 hours) for routine surveillance.
+- **Longer retention only with specific justification** — a commonly-cited cap of around 7 days without deeper justification, extending further only for incident-linked or investigation-linked footage.
+- Proportionality and minimisation tied to the legitimate-interest balancing test.
+
+**Important framing.** This is **CCTV guidance, not drone-specific published rule.** **The retention windows used throughout this document (24–72 h default, 30–90 d for privileged footage, etc.) are DPIA working assumptions inferred by analogy from the 2010 videosurveillance provision — they are not settled drone-specific law, and they must be re-derived per deployment under Italian counsel review.** The Garante has aggressive enforcement when triggered but has issued limited drone-specific published general guidance; any deployment must treat these numbers as a starting posture subject to:
 
 - **Italian counsel review** against current Garante practice and any drone-relevant decisions issued after this document's date.
 - **Pre-deployment DPIA** that justifies the selected retention windows against this project's specific operation profile.
@@ -390,7 +392,7 @@ General guidance in `regulatory-eu.md §11`. Italy-specific considerations:
 - **ENAC** — Non-EU pilot certification reciprocity
 - **ENAV** — Services for your drone; U-space airspace of drones
 - **D-Flight** — national UAS platform (`d-flight.it`)
-- **Italian Garante** — Provvedimento 11 ottobre 2018 on videosorveglianza
+- **Italian Garante** — *Provvedimento in materia di videosorveglianza*, 8 aprile 2010 (general baseline for CCTV retention; applied by analogy to drones — counsel review required)
 - **GDPRhub** — Garante decisions 10065894 and 9949494 (CCTV + domestic exemption precedents)
 - **ENAC Tariffario** — annual fee schedule (verify current year PDF from `enac.gov.it`)
 - **Unmanned Airspace** — Italy's first declared U-space airspace (San Salvo, Abruzzo, 2026-01)

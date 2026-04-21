@@ -103,7 +103,7 @@ Under Part 107, a **Remote Pilot in Command** must be responsible for the flight
 - "Maintainable" is not the same as "maintained" — the RPIC must actually be watching the aircraft, not the HA dashboard. The live video feed is for situational awareness and evidence capture, not for satisfying VLOS.
 - Night operations: anti-collision strobe must be visible for 3 statute miles. At 80–110 ft on a 1-acre property, VLOS via strobe is achievable, but the RPIC must be **outdoors** watching the aircraft.
 - The RPIC must be **physically present on or near the property** before tapping LAUNCH. The system cannot technically enforce RPIC location, but the burden is on the operator: *do not authorise flight unless you are within visual range of the planned flight corridor.*
-- The "person detected while no one is home" scenario is **NOT a valid Part 107 use case** unless a visual observer (14 CFR 107.33) is on-site. Under Part 108, this constraint is removed.
+- The "person detected while no one is home" scenario is **not a routine Part 107 use case** — ordinary Part 107 requires VLOS maintained by the RPIC or a visual observer on-site (14 CFR 107.31, 107.33). The *planned* path is Part 108 once finalised. **An extraordinary §107.31 / §107.33 waiver pathway may exist** and the FAA has granted VLOS and related waivers in the past, but such waivers are fact-specific, case-by-case, heavily documented, non-transferable, and uncertain to obtain. Treat waiver-based operation as off-path for design purposes — it is not a productisable target, and this document and the ComplianceGate assume ordinary Part 107 constraints (VLOS + on-site RPIC) until Part 108 is final.
 
 ### 4.4 Operations over non-participants and moving vehicles
 

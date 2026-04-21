@@ -34,7 +34,7 @@ This document is a **pressure test of the `drone_hass` design against the Europe
 |---|---|
 | Does the Open category work for autonomous BVLOS perimeter patrol? | **No.** BVLOS breaks Open. A2 is VLOS-only; A3 requires 150 m from residential areas. |
 | Does the Certified category apply? | No. Not transporting people or dangerous goods. |
-| Does Specific category work? | **Yes.** Three Specific-category entry points are worth evaluating per deployment: (a) **PDRA-S02** — Predefined Risk Assessment for BVLOS with airspace observers, sparsely populated, ≤4 kg; **does NOT require C-class marking**, so it is open to Article-14 privately-built UAS such as this project's ArduPilot; (b) **full SORA operational authorisation** — the fallback when PDRA operational conditions don't match; (c) **STS-01/02** — standard scenarios that require C5/C6 class marking, therefore blocked for self-built. Prior versions of this document claimed PDRA was blocked by C-class marking; that was incorrect and has been corrected. |
+| Does Specific category work? | **Yes, via PDRA-S02 as the primary path.** Order: (1) **PDRA-S02** — Predefined Risk Assessment for BVLOS with airspace observers, sparsely populated, ≤4 kg, ≤120 m AGL. **Does NOT require C-class marking**; per EASA, PDRA gives flexibility for UAS that are not C5/C6-marked, open to Article-14 privately-built builds like this project. This is the primary path. (2) **Full SORA operational authorisation** — fallback when PDRA operational conditions don't fit. (3) **STS-01/02** — declarative scenarios requiring C5/C6 class marking; **closed for self-built ArduPilot**, but this does not block PDRA or full SORA. See §4.3. |
 | Realistic SAIL target | **SAIL II** achievable with appropriate mitigations; SAIL III is fallback. Site geometry is decisive (see country specialisations). |
 | Architectural mapping | **EU Specific operational authorisation ≈ US Part 108 permit.** Same software shape (pre-approved volume, human monitors without gating, mandatory logging). Compliance-store and privacy semantics differ. |
 | Does FAA Part 107 transfer? | **No.** Operator re-qualifies via the national CAA (A2 CofC + STS/Specific theoretical exam). |
@@ -92,22 +92,32 @@ National CAAs cannot override the category system, the SORA methodology, the C-c
 
 Certified targets transport of people, dangerous goods, or operations where risk is already Certified-level. A small-property perimeter patrol doesn't approach this.
 
-### 4.3 Specific — three pathways, distinct C-class dependencies
+### 4.3 Specific-category pathways — ordered primary → fallback → closed
 
-1. **STS-01 / STS-02** (Standard Scenarios) — pre-baked operational declarations. STS-02 covers BVLOS with airspace observers over a controlled ground area, ≤4 kg. **Requires C5/C6 class-marked aircraft.** Self-built ArduPilot will not qualify. **Blocked for this project.**
+**Primary: PDRA-S02** — this is the viable path for this project.
 
-2. **PDRA-S01 / PDRA-S02** (Predefined Risk Assessment) — EU-wide predefined assessments under AMC1 to Article 11. PDRA-S01 covers VLOS ≤120 m AGL over controlled ground area, ≤4 kg; PDRA-S02 covers BVLOS with airspace observers, sparsely populated, ≤4 kg. Operator files an authorisation request referencing the PDRA rather than constructing a full SORA. **PDRAs do NOT require C-class marking** — they set operational and technical requirements directly, applicable to Article-14 privately-built UAS. **PDRA-S02 is likely the lowest-friction path** for this project's BVLOS-with-airspace-observer use case and should be evaluated first per deployment.
+**PDRA-S02** (Predefined Risk Assessment, Appendix 1 to AMC1 Article 11 of Reg (EU) 2019/947) covers BVLOS operation with airspace observer(s) in a controlled or sparsely-populated environment, aircraft ≤4 kg MTOM, ≤120 m AGL. **PDRA-S02 does not require C5/C6 class-marked aircraft.** EASA's own STS/PDRA materials state that PDRA gives operators "flexibility to use UAS that do not need to be marked as class C6," setting operational and technical requirements directly instead. The PDRA is available to Article-14 privately-built UAS that meet the PDRA's technical requirements. Operator files an authorisation request citing the PDRA rather than constructing a full SORA; NAA review is lighter (typically weeks, lower fees) than full SORA.
 
-3. **Operational authorisation via full SORA** — bespoke risk assessment submitted to the national CAA. Fallback for operations whose geometry or autonomy model does not fit PDRA-S02 (e.g., no airspace observer, larger operational volume, higher SAIL). Still viable, but more engineer-time and NAA-review-time than PDRA.
+**PDRA-S01** analogously corresponds to STS-01 (VLOS, controlled ground area, ≤4 kg) and is available for VLOS operations on the same basis — **no C-class marking required**.
 
-**Correction to prior versions of this document:** Earlier drafts claimed the operation was "blocked solely by aircraft class marking" — that was a material doctrinal error. C-class marking is required for STS only; PDRA-S01/S-02 are open to self-built Article-14 UAS. The correct framing is: **evaluate PDRA-S02 first**, then fall back to full SORA if PDRA operational conditions don't fit.
+**Fallback: full SORA operational authorisation** — if a deployment's geometry or autonomy model doesn't fit PDRA-S02 (e.g., no airspace observer, wider operational volume, higher SAIL than PDRA permits), the operator constructs a bespoke SORA submission. Still viable, more engineer-time and NAA-review-time than PDRA.
 
-**Note on PDRA eligibility for Article-14 builds**: EASA AMC1 makes PDRAs available for UAS meeting the PDRA's technical requirements; it does not condition PDRA on C-class marking. However, **some national CAAs have interpreted Article 14 and PDRA eligibility more narrowly**, and the exact scope varies. Verify with the national CAA (ENAC, DGAC, LBA+Länder, respectively) before committing to a PDRA path — this is a verify-before-relying item.
+**Closed: STS-01 / STS-02** — Standard Scenarios are declarative operational authorisations available only to **C5/C6 class-marked aircraft**. Self-built ArduPilot cannot obtain C-class marking, so STS is unavailable. This forecloses *STS only*; it does not affect PDRA or full-SORA paths.
+
+**PDRA-first framing (the correct bottom line):**
+
+- **PDRA-S02 is the primary path.** Not blocked by lack of C-class marking.
+- **Full SORA is the fallback** when PDRA operational conditions don't fit.
+- **STS is unavailable** because of C-class marking. That does not block PDRA.
+
+Prior drafts of this document incorrectly grouped STS and PDRA together as "blocked by lack of C-class marking," which contradicted EASA's published guidance. The correct framing is as above — evaluate PDRA-S02 first.
+
+**Note on national interpretation**: EASA AMC1 makes PDRAs available to UAS meeting the PDRA's technical requirements without requiring C-class marking. **National CAAs occasionally interpret Article 14 and PDRA eligibility more narrowly in practice**, particularly around airframe-conformity evidence. This is a verify-before-relying item: confirm with the national CAA (ENAC, DGAC, LBA/Länder respectively) at pre-consultation that PDRA-S02 is accepted for the specific Article-14 airframe.
 
 ### 4.4 Accepted one-way-doors
 
-- **No C-class marking possible for self-built ArduPilot.** This forecloses **STS** but does NOT foreclose PDRA. EU deployment will use PDRA-S02 (preferred) or full SORA operational authorisation. Reopening STS requires replacing the flight stack with a certified commercial UAS.
-- **No ANSI/CTA 2063 serial number flow for STS.** Same root cause. PDRA path is unaffected.
+- **No C-class marking possible for self-built ArduPilot.** This forecloses **STS only**. **PDRA-S01/S-02 remain open** — they do not require C-class marking. Full SORA also remains available. Reopening STS specifically requires replacing the flight stack with a certified commercial UAS.
+- **No ANSI/CTA 2063 serial number flow for STS.** Same root cause. PDRA and full-SORA paths are unaffected.
 
 ---
 
@@ -154,7 +164,7 @@ GDPR Art. 2(2)(c) excludes "purely personal or household activity." National DPA
 
 | DPA | Posture | Published drone guidance |
 |---|---|---|
-| **Garante (IT)** | Most lenient baseline guidance; aggressive enforcement when triggered. CCTV-derived (videosorveglianza, 2018 Provvedimento). | Indirect — CCTV precedents applied to drones. |
+| **Garante (IT)** | Most lenient baseline guidance; aggressive enforcement when triggered. CCTV-derived from Garante's general *Provvedimento 8 aprile 2010* on videosurveillance; no consolidated drone-specific Garante general provision. | Indirect — CCTV precedents applied to drones by analogy, counsel-required inference. |
 | **CNIL (FR)** | **Most prescriptive in EU.** Privacy masking expected by design; 30-day default retention; model Art. 13 notice. | Direct — multiple updates since 2020 on drone camera processing. |
 | **BfDI + 16 Länder DPAs (DE)** | Heterogeneous; jurisdiction at the Land level. §35 BDSG prior-consultation stricter than GDPR baseline. | Varies (BayLDA, Hamburg, ULD Schleswig-Holstein have published opinions; others do not). |
 

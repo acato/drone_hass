@@ -200,7 +200,7 @@ install_unsigned_filter(wifi_connection, link_name='wifi')
 - Chain verification on startup AND daily (Ed25519 + SHA-256 hash chain + OpenTimestamps proof walk).
 - Recovery tool `unwrap_signing_key.py` ships standalone for off-bridge restore.
 
-**Residual risk:** the operator controls deployment, so a modified bridge codebase could write false records with valid signatures. Self-hosted compliance is **tamper-evident**, not tamper-proof. Mitigated by Apache 2.0 source auditability, cosign-verified images at install (R-27), Remote ID independent corroboration of flight existence, and OpenTimestamps anchoring of the chain to Bitcoin block-time (a forward-dating attack cannot produce an OTS proof claiming an earlier block-time than the calendar server actually issued).
+**Residual risk:** the operator controls deployment, so a modified bridge codebase could write false records with valid signatures. Self-hosted compliance is **tamper-evident**, not tamper-proof. Mitigated by Apache 2.0 source auditability, cosign-verified images at install (R-27), opportunistic Remote ID corroboration (contemporaneous RF broadcast that a third-party receiver or DiSCVR law-enforcement query may capture — **not a routine FAA-exposed flight-history lookup**), and OpenTimestamps anchoring of the chain to public block-time (a forward-dating attack cannot produce an OTS proof claiming an earlier block-time than the calendar server actually issued).
 
 ---
 
@@ -1085,23 +1085,29 @@ def export_compliance_for_permit(start_date, end_date, flight_source_filter='liv
     return json.dumps(export_data, indent=2)
 ```
 
-#### Remote ID Corroboration
+#### Remote ID Corroboration (opportunistic, not a routine lookup)
 
-Remote ID broadcasts independently record flight positions outside of bridge control:
+Remote ID broadcasts during flight are **contemporaneous RF emissions**. Any receiver in range — FAA-operated infrastructure, cooperative third-party listeners (dronescanner-class apps, amateur observers), or DiSCVR for authorised law enforcement — can log them independently of the bridge. **The FAA does not expose a public flight-history database** that routine operators or third-party auditors can query; DiSCVR is restricted to law enforcement, and the FAA's public DOC system covers equipment declarations (not flight records). So Remote ID corroboration is:
+
+- **Opportunistic** — depends on a receiver being in RF range during the claimed flight window
+- **Law-enforcement-accessible** via DiSCVR in the context of a specific investigation
+- **NOT a routine audit mechanism** — do not assume an auditor can simply query the FAA for matching tracks
+
+Where Remote ID log data *is* obtainable (via a cooperative receiver network the operator or a third party has deployed, or via law enforcement), the correlation logic below is still useful:
 
 ```python
 def correlate_with_remote_id(compliance_record, remote_id_track):
     """
-    Compare compliance record position against Remote ID track.
-    Remote ID is received by third parties and forwarded to FAA.
-    Position mismatch indicates record falsification.
+    Compare compliance record position against a Remote ID track, when such a
+    track is available from an independent receiver. Not a routine FAA lookup.
+    Position mismatch indicates possible record falsification.
     """
-    
+
     compliance_pos = (compliance_record['gps_lat'], compliance_record['gps_lon'])
     remote_id_pos = (remote_id_track['lat'], remote_id_track['lon'])
-    
+
     distance_m = haversine(compliance_pos, remote_id_pos)
-    
+
     if distance_m > 50:  # >50m discrepancy is suspicious
         log.warning(
             f"Position mismatch between compliance and Remote ID:\n"
@@ -1123,7 +1129,7 @@ def correlate_with_remote_id(compliance_record, remote_id_track):
   - Open-source code is auditable by FAA or third-party experts
   - Git history shows all modifications
   - FAA can require running unmodified tagged releases
-  - Remote ID provides independent, operator-uncontrollable corroboration
+  - Remote ID corroboration is opportunistic (receiver-coverage-dependent) or enforcement-specific (DiSCVR for law enforcement). **Not a guaranteed FAA-held audit backstop.** Prior drafts of this document overstated this control.
   - Regular audits by compliance officer
 
 ---

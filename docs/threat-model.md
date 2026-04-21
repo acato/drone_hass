@@ -321,7 +321,7 @@
   2. Records should include hardware identifiers (FC serial number, GPS module ID) that can be cross-referenced with FAA registration. SITL records would lack real hardware IDs.
   3. The daily integrity heartbeat should include an NTP-verified timestamp and be sent to an external timestamping authority.
   4. Accept that the compliance recorder provides tamper-evidence, not tamper-proof. Document this limitation. For Part 108, the FAA may require additional oversight (audits, spot checks, third-party monitoring).
-  5. Remote ID broadcasts during flights create an independent FAA-visible record that can be correlated with compliance records.
+  5. Remote ID broadcasts during flights are **contemporaneous RF emissions** that any receiver in range can log independently (FAA infrastructure, cooperative third-party listeners, DiSCVR for authorised law enforcement). **The FAA does not expose a public flight-history database** that allows routine auditor cross-reference against compliance records. Any Remote ID corroboration is opportunistic (depends on receiver coverage) or enforcement-specific (law enforcement can query DiSCVR). Prior drafts of this document implied an FAA-held queryable record; they overstated what the FAA actually publishes.
 
 ### 2.6 Home Assistant Attacks
 
@@ -655,7 +655,7 @@ The architecture document explicitly addresses the DJI pivot (Section 6.2, 6.7).
 
 - **With Litestream to immutable storage:** The records exist in the replica and cannot be deleted.
 - **Without immutable storage:** See Section 3.2.
-- **Remote ID correlation:** The FAA has a record of the flight via Remote ID broadcasts.
+- **Remote ID correlation (opportunistic, not guaranteed):** During flight the aircraft broadcasts Remote ID. Receivers in RF range — FAA-operated infrastructure, cooperative third-party listeners, or (for law enforcement only) DiSCVR — may have logged it. **The FAA does not expose a public flight-history database**, so routine auditor post-hoc lookup is not available; in a law-enforcement context DiSCVR can be queried. Whether any independent record of *this specific flight* exists depends on receiver coverage at the time and place, and on whether an investigation is opened.
 - **HA recorder:** If flight state entities are kept in the HA recorder, there is a separate record of the flight event (though not authoritative like the compliance DB).
 
 ---
@@ -853,7 +853,7 @@ topic read drone_hass/#
 **Resolution:** Litestream mandatory for Part 108 — bridge refuses to start without active replication. S3 Object Lock in COMPLIANCE mode. Chain continuity check on startup: if local DB is empty but replica has records, log critical anomaly.
 
 #### ATK-COMP-04: Compliance Record Fabrication
-**Resolution:** Every record includes `flight_source` (`live_aircraft` or `sitl_simulation`), detected from `AUTOPILOT_VERSION.uid` (0 for SITL), firmware string, and GPS hardware. SITL records explicitly excluded from Permit application exports. Remote ID broadcasts provide independent, operator-uncontrollable flight records for corroboration.
+**Resolution:** Every record includes `flight_source` (`live_aircraft` or `sitl_simulation`), detected from `AUTOPILOT_VERSION.uid` (0 for SITL), firmware string, and GPS hardware. SITL records explicitly excluded from Permit application exports. Remote ID broadcasts during genuine flights are contemporaneous RF emissions — if a receiver is in range (FAA infrastructure, cooperative third-party listeners, or DiSCVR in a law-enforcement context), they provide opportunistic corroboration. **The FAA does not expose a routine flight-history lookup**, so this is not a guaranteed audit mechanism — see §12 for the corrected framing.
 
 #### ATK-DOS-01: Battery Exhaustion via Repeated Alarms
 **Resolution:** Implement patrol cooldown timer: minimum configurable interval between launches (default 10 minutes). Escalating battery threshold for consecutive patrols (1st: 30%, 2nd: 50%, 3rd: 70%). Max patrols per day configurable.
@@ -899,12 +899,12 @@ Given the user's emphasis that **compliance data integrity is the most important
 | 7. S3 Object Lock (COMPLIANCE mode) | WORM storage for 5 years | Even the bucket owner cannot delete records during retention |
 | 8. Chain verification on startup + daily | Walks entire chain, verifies every hash + signature | Detects any tampering or corruption |
 | 9. SITL detection | Hardware UID, firmware string, GPS characteristics | Simulation records cannot be mixed with live flight records |
-| 10. Remote ID correlation | FAA receives independent position broadcasts | External, uncontrollable corroboration of live flights |
+| 10. Remote ID broadcast (contemporaneous only) | The aircraft broadcasts during flight; receivers in RF range (FAA / cooperative third-parties / DiSCVR for law enforcement) may log independently | Opportunistic external corroboration — **not a routine FAA-queryable flight-history lookup** (the FAA does not expose one) |
 | 11. Export with verification | JSON/CSV export includes chain verification summary | Third party can independently verify the audit trail |
 
-**What this system CAN prove:** Records were written by a specific bridge instance, in a specific order, at specific times, and have not been altered since writing. Live flights are corroborated by Remote ID. Records exist in immutable off-device storage.
+**What this system CAN prove:** Records were written by a specific bridge instance, in a specific order, at specific times, and have not been altered since writing. Records exist in immutable off-device storage. Live flights that happened to be in range of a Remote ID receiver have an independent RF log (opportunistic).
 
-**What this system CANNOT prove:** That the records accurately reflect what happened. A modified bridge codebase could write false records with valid signatures. This is the fundamental limitation of any self-hosted compliance system — the entity producing the records is the entity being audited. Mitigation: open-source code is auditable; git history shows modifications; the FAA can require running unmodified tagged releases.
+**What this system CANNOT prove:** That the records accurately reflect what happened. A modified bridge codebase could write false records with valid signatures. This is the fundamental limitation of any self-hosted compliance system — the entity producing the records is the entity being audited. Remote ID provides only opportunistic contemporaneous corroboration, not a guaranteed post-hoc audit backstop. Mitigation: open-source code is auditable; git history shows modifications; the FAA can require running unmodified tagged releases.
 
 ---
 
