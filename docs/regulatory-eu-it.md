@@ -402,7 +402,7 @@ General guidance in `regulatory-eu.md §11`. Italy-specific considerations:
 - **ENAC** — Non-EU pilot certification reciprocity
 - **ENAV** — Services for your drone; U-space airspace of drones
 - **D-Flight** — national UAS platform (`d-flight.it`)
-- **Italian Garante** — *Provvedimento in materia di videosorveglianza*, 8 aprile 2010 (general baseline for CCTV retention; applied by analogy to drones — counsel review required)
+- **Italian Garante** — *Provvedimento in materia di videosorveglianza*, 8 aprile 2010 [doc. web n. 1712680] (general baseline for CCTV retention; applied by analogy to drones — counsel review required)
 - **GDPRhub** — Garante decisions 10065894 and 9949494 (CCTV + domestic exemption precedents)
 - **ENAC Tariffario** — annual fee schedule (verify current year PDF from `enac.gov.it`)
 - **Unmanned Airspace** — Italy's first declared U-space airspace (San Salvo, Abruzzo, 2026-01)

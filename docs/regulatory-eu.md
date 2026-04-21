@@ -96,6 +96,8 @@ Certified targets transport of people, dangerous goods, or operations where risk
 
 **Primary: PDRA-S02** — this is the viable path for this project's operational profile.
 
+**Affirmative statement:** *PDRA-S02 is NOT blocked by the absence of C-class marking.* Unlike STS-02, PDRA-S02 provides flexibility to use UAS that do not need to be marked as class C6 — per EASA's Easy Access Rules text. The blocking question for this project is therefore not class marking alone, but whether the specific UAS, ConOps, autonomy model, mitigations, and national-authority acceptance fit PDRA-S02 or instead require a full SORA operational authorisation.
+
 **PDRA-S02** (Predefined Risk Assessment, Appendix 1 to AMC1 Article 11 of Reg (EU) 2019/947) covers **BVLOS operation with airspace observers** in a controlled ground area located in a sparsely-populated environment. The envelope set by EASA's PDRA-S02 text is:
 
 - UAS **MTOM ≤ 25 kg**

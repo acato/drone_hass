@@ -1713,7 +1713,7 @@ Four independent mechanisms under operator / infrastructure control, plus one co
 | **SHA-256 hash chain** | No records were removed or altered | The bridge (operator's system) |
 | **OpenTimestamps** | When the record was written | Decentralized (no one controls it) |
 | **Litestream + S3 Object Lock** | Records exist off-device, retention-protected backup | Operator's cloud account (Object Lock prevents deletion) |
-| **Remote ID broadcast** *(contemporaneous, not a routine lookup)* | During flight: the aircraft broadcasts position/ID; any RF-range receiver can log it | The FAA network + cooperative third-party listeners + (for law enforcement only) DiSCVR |
+| **Remote ID broadcast** *(contemporaneous, not a routine lookup)* | The aircraft emits contemporaneous identification / location broadcasts receivable by any third party in RF range | **No single actor** — corroboration depends on who lawfully received and retained the signal (cooperative third-party receivers, authorised public-safety systems via DiSCVR in law-enforcement contexts, amateur observers). **The FAA does not operate a public flight-history lookup.** |
 
 **Important framing correction.** Earlier drafts of this document claimed that auditors or Part 108 reviewers can "cross-reference flight records against the FAA Remote ID database." **The FAA does not expose a public flight-history database for this purpose.** The public-facing FAA UAS infrastructure covers:
 
