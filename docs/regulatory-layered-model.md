@@ -252,7 +252,7 @@ A claim at Level 2 (e.g., "our compliance chain is audit-grade") must be backed 
 - **Level 2 detail**: `architecture.md §3` (risk-based framing), `architecture.md §11` (compliance framework), `architecture.md §13` (security considerations).
 - **Level 3 detail**: `regulatory-eu.md §5` (SORA methodology 10-step overview).
 - **Level 4 detail**: `regulatory-eu.md` (EU-wide framework).
-- **Level 5 detail**: `regulatory-eu-it.md` (worked Italy), `regulatory-eu-fr.md` (France seed), `regulatory-eu-de.md` (Germany seed), `architecture.md §3.1–§3.6` (US Part 107/108 specialisation).
+- **Level 5 detail**: `regulatory-eu-it.md` (worked Italy), `regulatory-eu-fr.md` (France seed), `regulatory-eu-de.md` (Germany seed), `regulatory-us.md` (US Part 107/108 with Seattle Eastside worked scenario). `architecture.md §3.2–§3.3` are high-level pointers into these per-jurisdiction docs.
 - **Level 6 detail**: not in repo; lives in operator's deployment configuration, manuals, insurance, and flight records.
 
 ---

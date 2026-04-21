@@ -248,7 +248,7 @@ EU-wide changes required regardless of which member state. Country-specific over
 
 Decisions being made in the current (US-target) design that would be **hard or expensive to reverse** if the EU path is activated later. Cheap hedges now; real commitments later.
 
-See `architecture.md §3.7` for the hedged-vs-naive table. Highlights:
+See `architecture.md §3.6` for the hedged-vs-naive table. Highlights:
 
 ### 11.1 Aircraft / hardware (cheap hedges)
 

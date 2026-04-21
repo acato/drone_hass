@@ -620,7 +620,7 @@ The architecture document explicitly addresses the DJI pivot (Section 6.2, 6.7).
 **Scenario:** Operator receives an alarm while away from home (not within VLOS). Taps LAUNCH anyway because "it's just a quick check."
 
 - **Part 107 violation:** RPIC must be within VLOS. The system cannot enforce RPIC location.
-- **Architecture note:** The architecture explicitly documents this: "The system cannot technically enforce RPIC location" (Section 3.2).
+- **Architecture note:** The architecture explicitly documents this: "The system cannot technically enforce RPIC location" (`regulatory-us.md §4.3`).
 - **Mitigation gap:** No technical control prevents this. The compliance record logs `rpic_authorized` with a timestamp but does not verify the RPIC's physical location.
 - **Recommended mitigation:**
   1. Optionally require the RPIC's phone GPS location to be within a configurable radius of the operational area before the LAUNCH button is active.
