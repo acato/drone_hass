@@ -85,11 +85,13 @@ The HA integration config flow includes an explicit acknowledgment step where th
 
 ## 3. Regulatory Framework
 
-### 3.1 Applicable Law
+> **Reading guide:** this section mixes layers of invariance. US Part 107/108 detail is **Level 5** (national specialisation); concepts like risk-based categorisation, VLOS/BVLOS step-change, Remote ID, and insurance are **Level 2** (risk-based regulation family, shared across FAA/EASA/TC/CASA/…). See `regulatory-layered-model.md` for the full invariance model. Each subsection below is tagged with its layer for navigation.
+
+### 3.1 Applicable Law *(Level 5: US-specific)*
 
 Drone operation in the U.S. is governed by federal law (FAA), not state law. This use case — property security triggered by an alarm — is **commercial/operational**, meaning **14 CFR Part 107** applies today and **14 CFR Part 108** will apply when finalized.
 
-### 3.2 Part 107: Current Operating Mode
+### 3.2 Part 107: Current Operating Mode *(Level 5: US-specific)*
 
 Part 107 governs all flight operations until a Part 108 Permit is obtained.
 
@@ -113,7 +115,7 @@ Part 107 governs all flight operations until a Part 108 Permit is obtained.
 - The RPIC must be physically present on or near the property before tapping LAUNCH. The system cannot technically enforce RPIC location, but this document places the burden explicitly on the operator: **do not authorize flight unless you are within visual range of the planned flight corridor.**
 - The "person detected while no one is home" scenario is NOT a valid Part 107 use case unless a visual observer (14 CFR 107.33) is on-site. Under Part 108, this constraint is removed.
 
-### 3.3 Part 108: Target Operating Mode
+### 3.3 Part 108: Target Operating Mode *(Level 5: US-specific)*
 
 Part 108 is the target regulatory framework. The NPRM was published August 7, 2025. The final rule has not been published as of April 2026. Expected timeline: final rule summer 2026, implementation 6-12 months after publication.
 
@@ -151,7 +153,7 @@ Alarm → Automated safety checks (weather, DAA health, airspace, battery, dock)
 
 The per-flight human tap disappears. The Flight Coordinator is a monitor with override capability, not a gatekeeper.
 
-### 3.4 Dual-Mode Architecture
+### 3.4 Dual-Mode Architecture *(Level 1: project architecture, specialised at Level 5)*
 
 The system operates in one of two modes, selectable via configuration:
 
@@ -165,14 +167,14 @@ Part 108 mode:
 
 Part 107 mode is a strict subset of Part 108 mode — everything Part 108 requires (DAA, logging, weather checks, operational area validation), Part 107 operations also benefit from. The only difference is whether a human tap is required before launch.
 
-### 3.5 Washington State Specifics
+### 3.5 Washington State Specifics *(Level 6: site-specific within US)*
 
 WA adds minimal flight restrictions beyond FAA:
 - Privacy: avoid surveillance where people have reasonable expectation of privacy (neighbor yards/windows)
 - Property overflight: perimeter patrol must avoid crossing into neighbors' airspace
 - State parks require permission; private residential land is fine
 
-### 3.6 Non-Operator Deployments
+### 3.6 Non-Operator Deployments *(Level 1: project policy)*
 
 This is a public open-source project. Operators deploying it are responsible for their own regulatory compliance. The system includes:
 - Explicit prerequisites in this document (Section 2)
@@ -181,6 +183,50 @@ This is a public open-source project. Operators deploying it are responsible for
 - Geofence and operational area validation cannot be bypassed from HA
 
 These measures do not transfer legal responsibility from the operator but create a documented record that requirements were communicated.
+
+### 3.7 EU — Design Considerations (Pressure Test) *(Level 3–5: SORA, EU framework, national specialisations)*
+
+The primary target jurisdiction is the US (Part 107/108 — Level 5). A separate pressure-test analysis against EU Regulation 2019/947 + 2019/945 (Level 4) covers the EU as a whole, with three national specialisations (Level 5):
+
+- `regulatory-eu.md` — pan-EU framework (direct-effect regulations, SORA methodology, GDPR baseline, EU-wide one-way-doors, per-country architecture abstractions).
+- `regulatory-eu-it.md` — Italy specialisation. Full worked scenario for a ~1-acre coastal property in Lavagna, Liguria. ENAC + Garante + D-Flight. Complete cost breakdown, SORA process walkthrough, 27-item deliverables checklist.
+- `regulatory-eu-fr.md` — France specialisation (seed). DGAC/DSAC + AlphaTango + CNIL. Flagged as partial — CNIL-aligned DPIA overlay is the single biggest completion item.
+- `regulatory-eu-de.md` — Germany specialisation (seed). LBA + 16 Länder + DIPUL + Länder DPAs. Flagged as partial — Länder fragmentation is the structural problem.
+
+Headline conclusions:
+
+- The operation falls in the **Specific category**, realistic target **SAIL II** via national operational authorisation with SORA methodology. Timeline 2–7 months depending on country, cost €2.5–5k self-prepared fees + 150–300 engineer-hours. STS/PDRA are blocked by the self-built ArduPilot's lack of C-class marking — EU-wide.
+- **EU Specific operational authorisation ≈ US Part 108 operational permit** — the software shape is the same (pre-approved volume, human monitors without gating, mandatory logging). Compliance-store and privacy semantics differ.
+- The biggest non-aviation gap is **GDPR / the national DPA** on the camera payload. CNIL (FR) is the hardest surface; Länder DPAs (DE) are heterogeneous; Garante (IT) is most lenient. This drives the two-tier compliance recorder design (see `compliance-recorder-two-tier.md`), worth adopting in US mode too.
+- **~65% of the regulatory content is MS-neutral; ~25% swaps cleanly; ~10% needs rewriting** (principally the DPA layer). Porting from IT to FR is weeks; IT to DE is months, dominated by Länder fragmentation.
+
+Rather than build EU support now, the design makes **cheap hedges** on decisions that are hard or expensive to reverse later — primarily in hardware selection. Real commitments (parachute, FLARM, D-Flight registration, SORA submission, DPIA lawyer) are deferred until EU deployment is actually on the roadmap.
+
+**One-way-door decisions being hedged now:**
+
+| Area | US-only naive default | Hedged default | Why it matters |
+|---|---|---|---|
+| Primary C2 radio | RFD900x (915 MHz, 1 W) | **RFD868x (868 MHz, 25 mW) or dual-band variant** | 915 MHz is not usable at ISM power levels in the EU. Same vendor, similar price. Swapping later requires re-pairing both ends. |
+| Remote ID module | FAA-certified only | **Dual-certified: FAA + ASD-STAN EN 4709-002 / Delegated Reg (EU) 2020/1058** | Dronetag / BlueMark modules carry both declarations. Minimal premium. |
+| Autopilot firmware | ArduPilot 4.4 | **ArduPilot 4.5+** | Multi-fence required for asymmetric sector-dependent altitude caps under SORA. Parameter cascade if upgraded later. |
+| Airframe payload margin | Sized to camera + comms only | **Headroom for parachute (200–500 g) + FLARM (~50 g) + independent FTS MCU (~30 g) + LTE modem (~100 g)** | Adding ~1 kg of reserve at airframe selection avoids a full rebuild later. |
+| Independent FTS MCU footprint | Not present | **Reserve PCB / chassis space + a UART or relay line** on an autopilot-external MCU (ESP32/STM32 with own power rail) | FTS must fire even if autopilot hangs. Retrofitting into a finished airframe is painful. |
+| Camera focal length | Whatever the use case wants | **Default wide-angle (≤30 mm equiv)** | GDPR identifiability argument depends on this. Telephoto payload changes the DPIA calculus. |
+| Gimbal | Any | **Real-time queryable attitude (MAVLink-native / SBUS)** | Geospatial / FOV-sector privacy masking requires per-frame gimbal state. Closed-API gimbals foreclose the privacy mask. |
+| Autopilot UART budget | Consume as needed | **Reserve 1 UART for FLARM, 1 for LTE C2** | Pixhawk 6C has 7 serial ports. Budget them at design time rather than fighting cable runs later. |
+| Compliance recorder schema | Single-tier chain + inline blobs | **Two-tier: immutable metadata chain + deletable blob tier** (see `compliance-recorder-two-tier.md`) | Retrofitting tier-2 later means migrating the chain. Biggest software one-way-door. |
+| Privacy masking | Post-hoc in HA or absent | **Pre-record in the RTSP pipeline (go2rtc/mediamtx)** | If frames are recorded unmasked, the raw exists and is GDPR-scoped. Architectural. |
+| `OperationalMode` enum | `PART_107`, `PART_108` only (`mavlink_mqtt_bridge/compliance.py`) | Extensible; no `assert mode in (…)` patterns in callers | `EU_OPEN_A3` / `EU_SPECIFIC_SORA` drop in cleanly. Current shape is already extensible; just keep it that way. |
+| Operator ID schema | FAA-only implicit | **Tagged union: `{faa_op_id \| eu_df_operator_number}`** | Data-model change is cheap now, painful after shipping. |
+| Geofence representation | Single polygon inset | **Three nested polygons (operational, contingency, GRB) with per-edge setback values** | Populate trivially in US mode; required under SORA OSO #24. |
+| Flight log regulator field | Not present | Add `country` / `regulator` columns to `flight_log` | Makes regulator-scoped queries trivial later. |
+
+**Accepted one-way-doors (closing knowingly):**
+
+- **No C-class marking possible for self-built ArduPilot.** EU deployment will be SORA-operational-authorisation only, never STS/PDRA. Reopening requires replacing the flight stack with a certified commercial UAS.
+- **No ANSI/CTA 2063 serial number flow for STS.** Same root cause.
+
+See `regulatory-eu.md` for the pan-EU framework and `regulatory-eu-it.md` for the worked Lavagna scenario — site geometry, GRB math, SAIL / OSO derivation, ENAC SORA process walkthrough, cost breakdown, 27-item deliverables checklist. France and Germany seeds (`regulatory-eu-fr.md`, `regulatory-eu-de.md`) cover the cross-country findings and open items.
 
 ---
 
@@ -1375,9 +1421,11 @@ automation:
 
 ## 11. Compliance Framework
 
+> **Layers:** the compliance framework spans Levels 1 (project architecture, including the two-tier recorder primitive), 2 (risk-based regulatory concepts: occurrence reporting, audit chain, insurance validation) and 5 (per-jurisdiction ComplianceGate mode, retention classes, DPIA overlay). See `regulatory-layered-model.md`.
+
 ### 11.1 Purpose
 
-Part 108 requires flight data recording, quality assurance, and auditability. This framework is implemented from day one — it makes Part 107 operations better now and becomes the evidence base for the Part 108 Permit application.
+Part 108 requires flight data recording, quality assurance, and auditability. This framework is implemented from day one — it makes Part 107 operations better now and becomes the evidence base for the Part 108 Permit application. The same framework serves EU Specific-category operational authorisations (SORA, Level 3) via the per-country ComplianceGate modes — see `regulatory-eu.md` and the two-tier recorder spec in `compliance-recorder-two-tier.md`.
 
 ### 11.2 Compliance Recorder
 
