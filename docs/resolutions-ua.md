@@ -200,7 +200,7 @@ install_unsigned_filter(wifi_connection, link_name='wifi')
 - Chain verification on startup AND daily (Ed25519 + SHA-256 hash chain + OpenTimestamps proof walk).
 - Recovery tool `unwrap_signing_key.py` ships standalone for off-bridge restore.
 
-**Residual risk:** the operator controls deployment, so a modified bridge codebase could write false records with valid signatures. Self-hosted compliance is **tamper-evident**, not tamper-proof. Mitigated by Apache 2.0 source auditability, cosign-verified images at install (R-27), opportunistic Remote ID corroboration (contemporaneous RF broadcast that a third-party receiver or DiSCVR law-enforcement query may capture — **not a routine FAA-exposed flight-history lookup**), and OpenTimestamps anchoring of the chain to public block-time (a forward-dating attack cannot produce an OTS proof claiming an earlier block-time than the calendar server actually issued).
+**Residual risk:** the operator controls deployment, so a modified bridge codebase could write false records with valid signatures. Self-hosted compliance is **tamper-evident**, not tamper-proof. Mitigated by Apache 2.0 source auditability, cosign-verified images at install (R-27), opportunistic Remote ID corroboration (contemporaneous RF broadcast that cooperative third-party receivers or DiSCVR law-enforcement access may capture; no routine public flight-history lookup exists), and OpenTimestamps anchoring of the chain to public block-time (a forward-dating attack cannot produce an OTS proof claiming an earlier block-time than the calendar server actually issued).
 
 ---
 
@@ -1129,7 +1129,7 @@ def correlate_with_remote_id(compliance_record, remote_id_track):
   - Open-source code is auditable by FAA or third-party experts
   - Git history shows all modifications
   - FAA can require running unmodified tagged releases
-  - Remote ID corroboration is opportunistic (receiver-coverage-dependent) or enforcement-specific (DiSCVR for law enforcement). **Not a guaranteed FAA-held audit backstop.** Prior drafts of this document overstated this control.
+  - Remote ID corroboration is opportunistic (receiver-coverage-dependent) or enforcement-specific (DiSCVR for law enforcement). Not a guaranteed audit backstop.
   - Regular audits by compliance officer
 
 ---

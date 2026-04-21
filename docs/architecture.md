@@ -1715,18 +1715,18 @@ Four independent mechanisms under operator / infrastructure control, plus one co
 | **Litestream + S3 Object Lock** | Records exist off-device, retention-protected backup | Operator's cloud account (Object Lock prevents deletion) |
 | **Remote ID broadcast** *(contemporaneous, not a routine lookup)* | The aircraft emits contemporaneous identification / location broadcasts receivable by any third party in RF range | **No single actor** — corroboration depends on who lawfully received and retained the signal (cooperative third-party receivers, authorised public-safety systems via DiSCVR in law-enforcement contexts, amateur observers). **The FAA does not operate a public flight-history lookup.** |
 
-**Important framing correction.** Earlier drafts of this document claimed that auditors or Part 108 reviewers can "cross-reference flight records against the FAA Remote ID database." **The FAA does not expose a public flight-history database for this purpose.** The public-facing FAA UAS infrastructure covers:
+**Scope of Remote ID for audit purposes.** Remote ID is a **broadcast requirement**, not a queryable public evidentiary ledger. The public-facing FAA UAS infrastructure covers:
 
-- **DOC (Declaration of Compliance) database** — equipment declarations by manufacturers of Remote-ID broadcast modules and Standard Remote ID UAS. Not a flight-record ledger.
+- **DOC (Declaration of Compliance) registry** — equipment declarations by manufacturers of Remote-ID broadcast modules and Standard Remote ID UAS. Not a flight-record ledger.
 - **DiSCVR** — a compliance and enforcement tool accessible to authorised law enforcement only. Not a routine operator- or auditor-facing system.
 
-Remote ID is therefore a **real-time compliance broadcast**, not a post-hoc lookup. What it actually provides:
+**There is no FAA-operated public flight-history lookup.** Remote ID is therefore a **real-time compliance broadcast**:
 
-- During flight: any Remote ID receiver within RF range (FAA-operated infrastructure, cooperative third-party listeners, amateur observers, law enforcement) can log the broadcast independently.
-- After flight: **no routine public flight-history query**. Law enforcement investigating a specific incident may request DiSCVR correlation.
-- The strongest honest claim is: "If a flight happened and a receiver was in range, an independent record may exist." Not "the FAA has a database of every flight."
+- During flight: any Remote ID receiver within RF range (cooperative third-party listeners, amateur observers, authorised public-safety systems) can log the broadcast independently.
+- After flight: **no routine public flight-history query is available.** Law enforcement investigating a specific incident may request corroboration via DiSCVR.
+- Honest claim: "If a flight happened and a receiver was in range, an independent record may exist." Not "the FAA has a queryable database of every flight."
 
-The four operator-controlled mechanisms (signatures, chain, anchor, off-site backup) answer most audit questions; Remote ID's role is narrower than prior drafts of this document implied.
+The four operator-controlled mechanisms (signatures, chain, anchor, off-site backup) answer most audit questions; Remote ID's evidentiary role is narrower than it is sometimes portrayed.
 
 Together these mechanisms answer:
 

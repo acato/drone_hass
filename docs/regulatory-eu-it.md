@@ -91,7 +91,7 @@ A 1-acre property is ~64 m × 64 m square. At 50 m AGL the south GRB alone consu
 
 ## 4. Specific-Category Path Selection
 
-**Evaluate PDRA-S02 first, then fall back to full SORA.** Prior versions of this document walked directly to full SORA claiming STS/PDRA were both blocked by lack of C-class marking. That was a doctrinal error — corrected in [`regulatory-eu.md §4.3`](regulatory-eu.md). STS requires C5/C6 marking; **PDRA-S01/S-02 do not**.
+**Evaluate PDRA-S02 first, then fall back to full SORA.** STS requires C5/C6 marking and is closed for self-built ArduPilot; **PDRA-S01/S-02 do not require C-class marking** and are open to Article-14 privately-built UAS meeting the PDRA's technical and operational conditions. See [`regulatory-eu.md §4.3`](regulatory-eu.md) for the pan-EU framing.
 
 **PDRA-S02** covers BVLOS with airspace observers in a **controlled ground area located in a sparsely-populated environment**. Per EASA's PDRA-S02 text, the envelope is:
 
@@ -101,7 +101,7 @@ A 1-acre property is ~64 m × 64 m square. At 50 m AGL the south GRB alone consu
 - Airspace observers to identify conflicting traffic
 - Remote pilot retains the ability to maintain control — **no autonomous operations** per PDRA-S02's own terms
 
-The project's ~2–5 kg multirotor and 1-acre operational volume fit well inside the PDRA-S02 envelope (earlier drafts of this document incorrectly stated "≤4 kg" — the actual PDRA-S02 MTOM limit is 25 kg). Lavagna's geometry (orchards E/W, 91 m setback N, public road S) plausibly qualifies as "sparsely populated" for PDRA-S02 purposes with the same mitigations we'd bring to a SORA. An airspace observer is a human role — for the perimeter-patrol use case this is the RPIC, the Flight Coordinator, or a designated observer on-site during flight windows, retaining intervention capability.
+The project's ~2–5 kg multirotor and 1-acre operational volume fit comfortably inside the PDRA-S02 envelope. Lavagna's geometry (orchards E/W, 91 m setback N, public road S) plausibly qualifies as "sparsely populated" for PDRA-S02 purposes with the same mitigations we'd bring to a SORA. An airspace observer is a human role — for the perimeter-patrol use case this is the RPIC, the Flight Coordinator, or a designated observer on-site during flight windows, retaining intervention capability.
 
 **Autonomy caveat — important.** PDRA-S02 prohibits "autonomous operations" in the sense of operations with no pilot / observer able to intervene. The project's "alarm-triggered mission, Flight Coordinator on duty retaining override" architecture (§3.4 of `architecture.md`) maps to PDRA-S02's supervised-autonomy model. **A truly unattended, no-human-in-loop flight while the operator is away is NOT PDRA-S02 territory** — that would require a bespoke full-SORA authorisation with ENAC and appropriate OSO-evidence demonstrating equivalent safety, and it is a more expensive / longer path than PDRA-S02. Every deployment decision should be explicit about which model is in play.
 
@@ -217,9 +217,9 @@ The landowner becomes a **data controller**.
 
 ### 6.2 Videosurveillance source — counsel-required inference, not drone-specific rule
 
-**Citation correction from earlier drafts.** Prior versions of this document cited "Provvedimento 11 ottobre 2018 on videosorveglianza" as the authoritative baseline for retention defaults. That was a sourcing error. The general authoritative baseline is Garante's **Provvedimento 8 aprile 2010** ("*Provvedimento in materia di videosorveglianza*"), which remains the reference general provision on video surveillance; later Garante items dated 2018 are **site-specific preliminary-verification decisions** (*provvedimenti preliminari di verifica*) rather than the general baseline source. Subsequent Garante FAQs, sectoral guidance, and GDPR-era reinterpretations supplement the 2010 provision but do not replace it as the source of the general retention framework.
+The general Garante anchor on video surveillance is the **Provvedimento in materia di videosorveglianza, 8 aprile 2010** [doc. web n. 1712680]. It remains the authoritative baseline general provision on CCTV; subsequent Garante FAQs, sectoral guidance, and GDPR-era reinterpretations supplement but do not replace it. Specific later decisions are fact-specific preliminary-verification items, not the general baseline.
 
-Garante's general CCTV framework establishes, in broad terms:
+The 2010 provision's general CCTV framework establishes, in broad terms:
 
 - **Short default retention** (typically 24 hours) for routine surveillance.
 - **Longer retention only with specific justification** — a commonly-cited cap of around 7 days without deeper justification, extending further only for incident-linked or investigation-linked footage.
