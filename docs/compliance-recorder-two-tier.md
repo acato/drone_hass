@@ -14,7 +14,7 @@ The Phase 0 compliance recorder (`mavlink_mqtt_bridge/compliance.py`, see `archi
 
 Video footage in the current mental model would be captured by the same chain — either as large records inline or as file-path references with per-file hashes included in chain records.
 
-**This is incompatible with GDPR** (`regulatory-eu.md` §8) and with any retention regime that requires footage to be deleted on a schedule or on data-subject request. The Italian Garante's established position on videosorveglianza requires 24–72 h retention for routine non-incident footage, extendable only for specific documented reasons. "Never delete" is a GDPR violation, not a feature.
+**This is incompatible with GDPR** (`regulatory-eu.md` §8) and with any retention regime that requires footage to be deleted on a schedule or on data-subject request. The Italian Garante's established position on **fixed CCTV videosorveglianza** (Provvedimento 11 ottobre 2018) sets a default retention window of 24 h, extensible to 7 days with justification, longer only for incident-linked footage. Extending that to drone footage is a **DPIA working assumption by analogy**, not a drone-specific published rule — see `regulatory-eu-it.md §6.2`. Either way, "never delete" is a GDPR violation, not a feature, and the two-tier recorder must support scheduled deletion.
 
 It is **also worth doing in US-only mode**. Even under FAA Part 107/108, storing unlimited video footage forever is:
 

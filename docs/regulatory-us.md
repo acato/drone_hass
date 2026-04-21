@@ -35,8 +35,8 @@ This document covers US regulatory compliance for `drone_hass`, parallel to `reg
 | Question | Answer |
 |---|---|
 | Is the operation legal now (2026-Q2)? | **Yes, under Part 107** with RPIC present and authorising each flight. VLOS-constrained. |
-| Is fully autonomous alarm-triggered flight legal now? | **No.** Requires Part 108 final rule + Operating Permit. The "alarm triggers flight while no one is home" scenario is **not legal under Part 107** without a visual observer. |
-| Expected Part 108 availability | NPRM published 2025-08-07; **final rule expected summer 2026**, implementation 6–12 months after. |
+| Is fully autonomous alarm-triggered flight legal now? | Not as a routine product. Under **ordinary Part 107 operations** the RPIC must maintain VLOS and be on-site — the "alarm triggers flight while no one is home" scenario does not fit that. The planned path is **Part 108 once finalised**. Extraordinary §107.31 / §107.33 waiver-based pathways may exist but are fact-specific, case-by-case, and uncertain — not a productisable design target. |
+| Expected Part 108 availability | NPRM published 2025-08-07. **Final rule is not yet published; timeline estimates (e.g. "summer 2026") are planning assumptions derived from the NPRM comment-cycle schedule, not present legal certainty.** Verify publication status before relying on any Part-108-based compliance claim. |
 | Operating tier likely to apply | **Part 108 Operating Permit** (not Certificate) — lower-risk operations, population density Categories 1–3. |
 | Which SAIL-like tier? | Part 108 uses population density Categories (1–4), not SAIL. This property is Category 2–3 (residential suburban). |
 | Does FAA accept DIY / homebuilt airframes under Part 108? | **Unclear.** NPRM is manufacturer-centric (Declaration of Compliance required). Homebuilder pathway depends on final rule. |
@@ -105,7 +105,54 @@ Under Part 107, a **Remote Pilot in Command** must be responsible for the flight
 - The RPIC must be **physically present on or near the property** before tapping LAUNCH. The system cannot technically enforce RPIC location, but the burden is on the operator: *do not authorise flight unless you are within visual range of the planned flight corridor.*
 - The "person detected while no one is home" scenario is **NOT a valid Part 107 use case** unless a visual observer (14 CFR 107.33) is on-site. Under Part 108, this constraint is removed.
 
-### 4.4 ComplianceGate behaviour — Part 107 mode
+### 4.4 Operations over non-participants and moving vehicles
+
+14 CFR Part 107 Subpart D (§§ 107.100–107.155) regulates operations over people and moving vehicles. The perimeter-patrol use case routinely flies near both — neighbours on adjacent property, pedestrians on the public road, and vehicles on that road. The ComplianceGate and geofence must encode these rules explicitly; the privacy discussion in §7 is **not** a substitute.
+
+#### 4.4.1 Over people (14 CFR 107, Subpart D)
+
+The FAA defines four categories of small UAS cleared to operate over people; each requires the aircraft to meet specific kinetic-energy and safety criteria:
+
+- **Category 1** — UAS ≤ 0.55 lb (250 g), no exposed rotating parts that could cause laceration.
+- **Category 2, 3, 4** — each defined by declining permissibility against uninvolved persons, tied to Means of Compliance (MoC) declarations the manufacturer must file. The self-built ArduPilot in this project **does not hold any of these MoC declarations** and therefore cannot lawfully operate over uninvolved persons in its current configuration.
+
+**Operational implication for this project:** operations over uninvolved persons are **not authorised** regardless of Part 107 certificate status, until either (a) the aircraft meets a relevant Category and a declaration is filed, or (b) a specific waiver is obtained. The "non-participant" concept applies broadly — anyone who is not directly involved in the operation (neighbours, visitors, passers-by) is an uninvolved person.
+
+**Design controls:**
+
+- **Geofence hard-excludes** any corridor that would place the aircraft over a public road, a neighbouring residence's curtilage, or other known uninvolved-person locations.
+- **Mission planning** restricts flight paths to the operator's own property, accounting for realistic flight-path dispersion (see the SORA-analogue GRB thinking in the EU docs, which applies conceptually here too even if not legally required).
+- **Abort logic** triggers if a person is detected inside the mission area — either via pre-flight check (visual / camera sweep before takeoff) or during flight via operator override.
+
+#### 4.4.2 Over moving vehicles (14 CFR 107.145)
+
+§ 107.145 permits sustained flight over moving vehicles only under narrow conditions (within a closed or restricted-access site where all persons in vehicles are participants, or a per-flight waiver). For perimeter patrol near a **public road** these conditions are not met: road users are not participants.
+
+**Operational implication:** the aircraft must not sustain flight over the public road at the property's south boundary. Transient crossings may be permissible in limited cases; sustained patrol is not.
+
+**Design controls:**
+
+- Geofence hard-excludes the road corridor (matching the EU Lavagna-scenario asymmetric south inset, for the same reason).
+- Mission logic does not generate waypoints inside the road-exclusion polygon.
+- If a mission requires approaching the south boundary, the altitude cap and speed profile must keep the ground-risk buffer entirely on-property — same math as the EU SORA GRB analysis, applied as a safety-of-flight discipline even where Part 107 does not require a formal document.
+
+#### 4.4.3 Assembly of persons
+
+§ 107.145(b) also forbids flight over open-air assemblies of persons (e.g., a backyard gathering, a community event). The ComplianceGate cannot detect an assembly in real time, but the operator / RPIC can — **and must abort the flight if one is observed within the operational area before or during launch.** The pre-flight checklist includes a neighbour-awareness step: confirm no visible gathering on adjacent property. This is operational discipline, not software-enforceable.
+
+#### 4.4.4 Summary
+
+| Concern | Rule | This project's enforcement |
+|---|---|---|
+| Sustained flight over uninvolved persons | Part 107 Subpart D Categories 1–4 (MoC-dependent) | Geofence excludes known uninvolved-person locations; no MoC filed, so default is "no overflight" |
+| Transient overflight of uninvolved persons | Still requires Category compliance in most cases | Geofence + pre-flight check; operator abort on observation |
+| Sustained flight over moving vehicles on public road | § 107.145 generally prohibits | Geofence excludes road corridor |
+| Flight over open-air assembly of persons | § 107.145 prohibits | Operator pre-flight check + in-flight abort |
+| Neighbour-property corridor traversal | Not per se prohibited, but implicates both Subpart D (if people present) and state trespass / privacy law (§7) | Geofence keeps mission corridors on own property |
+
+These controls apply regardless of Part 107 vs Part 108 mode — even under Part 108 the operational volume defined in the Permit must respect the over-people and over-vehicles rules at whatever form they take in the final rule.
+
+### 4.5 ComplianceGate behaviour — Part 107 mode
 
 ```
 Alarm
@@ -122,7 +169,7 @@ The per-flight tap is the invariant Part 107 requires; everything else is shared
 
 ## 5. Part 108 — Target Operating Mode *(L5 specialisation)*
 
-Part 108 is the target regulatory framework. The NPRM was published **2025-08-07**. The final rule has not been published as of 2026-04. Expected timeline: final rule summer 2026, implementation 6–12 months after publication.
+Part 108 is the target regulatory framework. The NPRM was published **2025-08-07**. The final rule has not been published as of this document's date. **All Part-108-specific claims in this section are forecast from the NPRM, not present legal conclusions.** The final rule may diverge from the NPRM on any or all of: timeline, permit-tier definitions, DAA performance standards, airworthiness acceptance pathway, population-density categorisation, and equipment mandates. Estimates like "summer 2026," "Operating Permit likely applies to this property," and the equipment tables below are planning assumptions, not settled law. Re-verify the final rule when it is published.
 
 ### 5.1 What Part 108 changes
 
@@ -136,7 +183,7 @@ Part 108 is the target regulatory framework. The NPRM was published **2025-08-07
 
 ### 5.2 Two authorisation tiers (from NPRM)
 
-1. **Operating Permit** — lower-risk operations, less FAA oversight. Available for operations in population density Categories 1–3. Residential suburban (Seattle Eastside) is likely **Category 2–3, within the Permit pathway**.
+1. **Operating Permit** — in the NPRM framing, lower-risk operations, less FAA oversight. Available for operations in population density Categories 1–3 as proposed. Residential suburban (Seattle Eastside) is likely Category 2–3 under the NPRM classification and therefore would be within the Permit pathway *as proposed*. **Forecast, not certainty — the final rule may redefine tiers, density categories, or the operations eligible for each.**
 2. **Operating Certificate** — higher-risk/complexity operations, greater organisational obligations.
 
 ### 5.3 DAA requirements for Class G, Category 2–3
@@ -201,17 +248,20 @@ This mirrors the architectural pattern used by the `ComplianceGate` in `mavlink_
 
 ---
 
-## 7. Washington State Specifics *(L6)*
+## 7. Washington State Overlay *(L6)* — a Litigation-Risk Surface, Not Black-Letter Rule
 
-WA adds minimal flight restrictions beyond FAA — states are preempted on airspace regulation but not on privacy, trespass, or property rights:
+**Federal preemption on airspace is real.** Under 49 U.S.C. § 40103, the federal government has exclusive sovereignty over navigable airspace; states cannot regulate flight as such. What remains to the states is **everything adjacent to aviation**: privacy, trespass, nuisance, property rights, some municipal ground-level restrictions. The legal landscape for drone overflight of neighbouring property is **unsettled** in Washington as in most U.S. jurisdictions; this section describes it as a litigation-risk surface, not a clean rule the project can enforce by geofence alone.
 
-- **Privacy**: avoid surveillance where people have reasonable expectation of privacy (neighbour yards/windows). RCW 9A.44.115 (voyeurism) and common-law intrusion-upon-seclusion are the relevant surfaces.
-- **Property overflight**: perimeter patrol must stay within own property airspace. Crossing into a neighbour's airspace, even at altitude, may constitute trespass in WA (case law mixed; *Baggett v. Gates* and successors).
-- **State parks**: require permission; private residential land is fine.
+- **Privacy** — avoid surveillance where people have a reasonable expectation of privacy (neighbour yards, windows, curtilage). RCW 9A.44.115 (voyeurism) and common-law intrusion-upon-seclusion are the relevant causes of action. Camera angle, mask polygons, and retention settings are partial technical mitigations; they do not eliminate litigation risk if a neighbour alleges observation of private space.
+- **Neighbour-airspace overflight** — crossing into the column above a neighbour's parcel is a **contested legal question**, not a settled prohibition. The FAA preempts regulation of navigable airspace; the neighbour retains property-law and tort-law claims for surface-adjacent low-altitude overflight under doctrines that trace back to *United States v. Causby* and have been applied unevenly to drones. Washington case law on drone overflight is thin; *Baggett v. Gates* and its progeny address related (not identical) issues. Prudent project posture: **treat neighbour airspace as a litigation-risk surface**. The ComplianceGate geofence is configured to keep missions within the operator's own property column as a risk-reduction measure, not because black-letter law requires it in every case.
+- **Trespass by aircraft** — WA courts have not squarely ruled on drone trespass at operational altitudes (80–120 ft AGL). Outcomes in related jurisdictions have been fact-dependent, varying with altitude, duration, camera use, and whether the neighbour suffered measurable intrusion or harm. Operators should assume worst-case for planning: a neighbour can sue, and whether the suit succeeds depends on facts we cannot predict.
+- **State parks** — require permission; private residential land is fine under state rules.
 - **No statewide drone registration** beyond FAA Part 48; no WA-specific Remote ID.
-- **Local ordinances**: some municipalities (Seattle, Redmond) have park-area drone restrictions. Verify city/county code at the deployment site.
+- **Local ordinances** — some municipalities (Seattle, Redmond) have park-area drone restrictions. Verify city/county code at the deployment site.
 
-No DPA equivalent. Unlike GDPR under EU regimes, the US has no federal data-protection law; WA state data-protection law (Washington My Health My Data Act, 2024) is scoped to health data and is not typically implicated by perimeter-patrol footage.
+**No state DPA equivalent.** Unlike GDPR under EU regimes, the US has no federal data-protection law. Washington's My Health My Data Act (2024) is scoped to health data and is not typically implicated by perimeter-patrol footage. Privacy litigation exposure rests on common-law and RCW 9A.44.115, not on a regulatory DPIA regime.
+
+**Design discipline in response:** the project's asymmetric geofence keeping missions on-property, the wide-angle camera default, the mask polygons, and short-retention defaults are all chosen to *minimise* (not eliminate) the WA litigation-risk surface. None of these replace counsel review for the specific deployment.
 
 ---
 

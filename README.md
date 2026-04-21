@@ -17,14 +17,14 @@ Two concrete deployments drive the design:
 | **Seattle Eastside, WA** | US — FAA Part 107 → Part 108 | Primary target; actively designed |
 | **Lavagna, Liguria, IT** | EU — ENAC Specific category via SORA, SAIL II | Pressure-tested; deferred deployment |
 
-Each use case has its own constraints. Under Part 107 the RPIC must be on-site and visible range of the aircraft — the "alarm triggers flight while no one is home" scenario requires Part 108, which is pending final rule. Under EU Specific, self-built ArduPilot cannot obtain C-class marking so STS / PDRA pathways are closed; GDPR via the national DPA is a parallel regulatory surface with no US analogue. Full analysis in the regulatory documents listed below.
+Each use case has its own constraints. Under Part 107 the RPIC must be on-site and within visible range of the aircraft; routine productised "alarm triggers flight while no one is home" is not available under ordinary Part 107 operations, and the planned path is Part 108 once finalised. (Extraordinary §107.31 / §107.33 waiver-based pathways exist but are fact-specific and uncertain.) Under EU Specific, self-built ArduPilot cannot obtain C-class marking so **STS** is closed, but **PDRA-S02** (BVLOS with airspace observers, ≤4 kg, sparsely populated) does not require C-class marking and is open to Article-14 privately-built UAS; full SORA remains the fallback. GDPR via the national DPA is a parallel regulatory surface with no US analogue. Full analysis in the regulatory documents listed below.
 
 ## What this project is
 
 - **Alarm-to-airborne in under 30 seconds.** HA automation handles safety checks, dock opens, drone launches, video streams — fully autonomous under Part 108 / EU Specific, or one-tap RPIC authorisation under Part 107.
 - **Live RTSP video in your HA dashboard.** No proprietary app, no cloud subscription. Camera streams directly through go2rtc / mediamtx to a standard HA camera entity. Pre-record geospatial privacy masking for GDPR compliance in EU mode.
 - **Develop without hardware.** ArduPilot SITL simulates a full drone on your workstation. Build and test the entire system — bridge, HA integration, missions, compliance — before you touch a soldering iron.
-- **Compliance framework from day one, both jurisdictions.** Not bolted on later. Every flight produces a verifiable audit trail — a two-tier recorder (immutable metadata chain + retention-class-gated video blobs) backed by five independent integrity mechanisms, each proving a different property, each controlled by a different entity:
+- **Compliance framework from day one, both jurisdictions.** Not bolted on later. Every flight produces a verifiable audit trail — a two-tier recorder (immutable metadata chain + retention-class-gated video blobs) backed by four independent integrity mechanisms, each proving a different property, each controlled by a different entity:
 
   | Mechanism | What it proves | Who controls it |
   |---|---|---|
@@ -32,7 +32,8 @@ Each use case has its own constraints. Under Part 107 the RPIC must be on-site a
   | **SHA-256 hash chain** | No records removed or altered | The bridge instance |
   | **OpenTimestamps** | When the record was written | No one (decentralised) |
   | **Litestream + S3 Object Lock** | Off-device backup exists | Operator's cloud (deletion-proof) |
-  | **Remote ID** (FAA Part 89 / EN 4709-002) | The flight actually occurred | The regulator (operator cannot alter) |
+
+  **Plus a fifth, contemporaneous signal that is not a lookup:** during flight the aircraft broadcasts **Remote ID** (FAA Part 89 / EN 4709-002). Any receiver in RF range — the FAA's network, law-enforcement DiSCVR, cooperative third-party listeners — can log it independently. **The FAA does not expose a public flight-history database for routine operator/auditor lookup.** Treat Remote ID as a compliance broadcast and a possible law-enforcement corroboration channel, not a routine evidentiary mechanism.
 
   The two-tier split keeps metadata immutable while allowing lawful video deletion under GDPR retention rules. Applicable in US mode too — routine footage retention is expensive and legally risky even under FAA-only. The open-source compliance tooling is the most novel contribution of this project.
 

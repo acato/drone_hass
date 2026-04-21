@@ -76,8 +76,8 @@ The add-on bundles:
 
 Neither deployment supports every operation:
 
-- **US / Seattle Eastside** — under current Part 107, flights are VLOS-constrained and the RPIC must be on-site. Full autonomy requires the Part 108 final rule (NPRM 2025-08-07; expected summer 2026). **The "alarm triggers flight while no one is home" scenario is not legal under Part 107** without an on-site visual observer. Part 108 airworthiness is manufacturer-Declaration-of-Compliance-centric; homebuilt ArduPilot may not qualify — see [`regulatory-us.md §5.6`](regulatory-us.md).
-- **EU / Lavagna** — self-built ArduPilot cannot obtain C-class marking, so STS / PDRA pathways are closed. The only path is Specific operational authorisation via SORA with ENAC. **GDPR via the national DPA is a parallel regulatory surface with no US analogue**; privacy masking and DPIA are non-optional. Asymmetric geofence is required because the property's south boundary is a public road (uninvolved-persons hot spot). See [`regulatory-eu-it.md`](regulatory-eu-it.md).
+- **US / Seattle Eastside** — under current Part 107, flights are VLOS-constrained and the RPIC must be on-site. Routine productised fully-autonomous alarm-triggered flight is not available under ordinary Part 107 operations; the planned path is Part 108 once finalised (NPRM published 2025-08-07 — **final rule and timeline TBD; "summer 2026" is a planning assumption from the NPRM comment-cycle schedule, not a present legal certainty**). Extraordinary §107.31 / §107.33 waiver-based pathways may exist but are fact-specific, case-by-case, and uncertain — treat as off-path for design purposes. Part 108 airworthiness per the NPRM is manufacturer-Declaration-of-Compliance-centric; homebuilt ArduPilot may not qualify under the final rule — see [`regulatory-us.md §5.6`](regulatory-us.md).
+- **EU / Lavagna** — self-built ArduPilot cannot obtain C-class marking, so the **STS** pathway is closed; **PDRA-S02** (BVLOS with airspace observers, ≤4 kg, sparsely populated) does NOT require C-class marking and is the lowest-friction path, with full SORA operational authorisation as the fallback. **GDPR via the national DPA is a parallel regulatory surface with no US analogue**; privacy masking and DPIA are non-optional. Asymmetric geofence is required because the property's south boundary is a public road (uninvolved-persons hot spot). See [`regulatory-eu-it.md`](regulatory-eu-it.md).
 
 ---
 
@@ -156,7 +156,7 @@ Authored by the operator, not shipped with the code:
 | Limit | Detail |
 |---|---|
 | Privacy overlay | US: state law (WA reasonable-expectation-of-privacy, RCW voyeurism, trespass). EU: GDPR + national DPA. Perimeter corridors must avoid surveillance of areas where people have a reasonable expectation of privacy. Under autonomous modes the operator cannot make real-time judgment calls, so the mask / geofence must pre-encode the constraint. |
-| Property overflight | Perimeter patrol must stay within own property airspace. Cross-over into neighbours is trespass (US) and GDPR-scoped capture (EU). |
+| Property overflight | Project policy keeps perimeter missions within the operator's own property column. **In the US this is a litigation-risk-reduction discipline, not a clean federal rule** — the FAA preempts airspace regulation, but state-level trespass and privacy claims remain a mixed-risk surface (see [`regulatory-us.md §7`](regulatory-us.md)). **In the EU** neighbour-column overflight also triggers GDPR-scoped capture of the neighbour's property and may trigger national trespass rules. The geofence enforces the project-policy answer; the legal risk beyond that is deployment-specific. |
 | Multi-drone limitation | One drone airborne at a time per qualified person. Under Part 107, one RPIC cannot maintain VLOS on two aircraft simultaneously (14 CFR 107.35(a)). Under Part 108 / EU Specific, Flight Coordinator oversight limits apply. |
 
 ---
@@ -189,7 +189,7 @@ Key points:
 - **Current mode (Part 107)** — VLOS, RPIC certificate, per-flight authorisation via HA single-tap. The "alarm while no one is home" scenario is not legal without an on-site observer.
 - **Target mode (Part 108)** — BVLOS, Operations Supervisor + Flight Coordinator roles, pre-approved operational area, cooperative DAA (ADS-B In), Flight Coordinator monitors without gating each flight.
 - **Airworthiness uncertainty** — Part 108 NPRM is manufacturer-Declaration-of-Compliance-centric. Self-built ArduPilot may not qualify; mitigations in [`regulatory-us.md §5.6`](regulatory-us.md) and §6.6 below.
-- **Washington State overlay** — privacy (reasonable expectation of privacy, RCW voyeurism), property overflight (trespass), state-park restrictions. No state-level airspace regulation (federal preemption).
+- **Washington State overlay** — privacy (reasonable expectation of privacy, RCW voyeurism) and low-altitude neighbour-overflight trespass claims are an **unsettled litigation-risk surface**, not black-letter rule. FAA preempts airspace regulation; state-level tort and property claims remain. State-park restrictions apply. See [`regulatory-us.md §7`](regulatory-us.md) for the honest framing.
 
 Full detail in [`regulatory-us.md`](regulatory-us.md) — prerequisites tables, VLOS realities, Part 108 tiers, DAA requirements, WA specifics, Seattle Eastside scenario, insurance, cost breakdown, 25-item deliverables checklist.
 
@@ -199,7 +199,7 @@ The EU analysis targets a hypothetical ~1-acre property in **Lavagna, Liguria (I
 
 Key points:
 
-- **Category** — Specific category via national operational authorisation using SORA methodology. **STS / PDRA blocked** by lack of C-class marking on self-built ArduPilot. Open-category BVLOS is not available.
+- **Category** — Specific category. **STS blocked** by lack of C-class marking on self-built ArduPilot, but **PDRA-S02** (BVLOS with airspace observers, ≤4 kg, sparsely populated) does NOT require C-class marking and is the lowest-friction path. Full SORA operational authorisation is the fallback where PDRA operational conditions don't fit. Open-category BVLOS is not available.
 - **SAIL target** — SAIL II is the realistic target across all three analysed countries with appropriate mitigations (parachute, M1 controlled ground area, ERP). SAIL III is fallback.
 - **Architectural equivalence** — **EU Specific operational authorisation ≈ US Part 108 Operating Permit**. The software shape is identical (pre-approved volume, human monitors without gating, mandatory logging). Differences are compliance-store retention and privacy semantics.
 - **GDPR** via the national DPA is the biggest non-aviation gap. CNIL (FR) is the strictest DPA, Garante (IT) the most lenient, Länder DPAs (DE) heterogeneous.
@@ -261,8 +261,8 @@ The design makes **cheap hedges** on hardware and software decisions that would 
 
 **Accepted one-way-doors (closing knowingly):**
 
-- **No C-class marking possible for self-built ArduPilot.** EU deployment will be SORA operational-authorisation only, never STS / PDRA. Reopening requires replacing the flight stack with a certified commercial UAS.
-- **No ANSI / CTA 2063 serial number flow for STS.** Same root cause.
+- **No C-class marking possible for self-built ArduPilot.** This closes **STS**. PDRA-S01/S-02 remain open (they do NOT require C-class marking); full SORA also remains available as fallback. Reopening STS specifically requires replacing the flight stack with a certified commercial UAS.
+- **No ANSI / CTA 2063 serial number flow for STS.** Same root cause. PDRA and full SORA paths are unaffected.
 - **Part 108 airworthiness via manufacturer DoC** may force a commercial airframe swap when the final rule lands — the software stack is airframe-agnostic specifically to keep this path open. See §6.6 and [`regulatory-us.md §5.6`](regulatory-us.md).
 
 Real commitments — parachute purchase + install, FLARM hardware, D-Flight registration, SORA submission, DPIA legal review, Part 108 Permit application — are deferred until the specific jurisdiction is actually being deployed to.
@@ -1693,7 +1693,7 @@ Cost: free. OpenTimestamps batches thousands of hashes into single operations. D
 
 **Daily integrity heartbeat:** The recorder writes a heartbeat record once per day, even if no flights occur. The heartbeat hashes the chain head and submits it to OpenTimestamps. This proves the chain was intact at each heartbeat — not self-asserted by the bridge, but independently anchored.
 
-**Verification:** A standalone verification tool (Go binary, zero dependencies, cross-platform) takes a compliance database export and a public key as input and outputs a detailed PASS/FAIL report. The tool also verifies OpenTimestamps proofs independently. The public key is embedded in the export format so auditors need only the export file. A 2-page plain-language auditor guide documents: (a) run the verifier, (b) compare key fingerprint against operator's registered fingerprint, (c) verify OpenTimestamps proofs, (d) cross-reference flight records against FAA Remote ID database.
+**Verification:** A standalone verification tool (Go binary, zero dependencies, cross-platform) takes a compliance database export and a public key as input and outputs a detailed PASS/FAIL report. The tool also verifies OpenTimestamps proofs independently. The public key is embedded in the export format so auditors need only the export file. A 2-page plain-language auditor guide documents: (a) run the verifier, (b) compare key fingerprint against operator's registered fingerprint, (c) verify OpenTimestamps proofs, (d) for law-enforcement review paths, request Remote ID corroboration via FAA DiSCVR (not a routine auditor lookup — see §11.5). **Do not assume the FAA exposes a public flight-history database for operator self-audit; it does not.**
 
 **Bridge startup self-checks:** On every startup, the bridge verifies its own deployment security:
 1. Attempts an unauthenticated MQTT connection — if it succeeds, drops to telemetry-only mode (no flight commands)
@@ -1705,25 +1705,38 @@ Cost: free. OpenTimestamps batches thousands of hashes into single operations. D
 
 ### 11.5 Compliance Data Integrity Model
 
-Five independent mechanisms, each proving a different property:
+Four independent mechanisms under operator / infrastructure control, plus one contemporaneous broadcast (Remote ID) that is **not a routine lookup**:
 
 | Mechanism | What it proves | Who controls it |
 |-----------|---------------|-----------------|
 | **Ed25519 signatures** | Who wrote the record | The bridge (operator's system) |
 | **SHA-256 hash chain** | No records were removed or altered | The bridge (operator's system) |
 | **OpenTimestamps** | When the record was written | Decentralized (no one controls it) |
-| **Litestream + S3** | Records exist off-device, queryable backup | Operator's cloud account (but S3 Object Lock prevents deletion) |
-| **FAA Remote ID** | The flight actually occurred | The FAA (operator cannot alter or delete) |
+| **Litestream + S3 Object Lock** | Records exist off-device, retention-protected backup | Operator's cloud account (Object Lock prevents deletion) |
+| **Remote ID broadcast** *(contemporaneous, not a routine lookup)* | During flight: the aircraft broadcasts position/ID; any RF-range receiver can log it | The FAA network + cooperative third-party listeners + (for law enforcement only) DiSCVR |
 
-Together, these five layers answer every question a Part 108 reviewer or incident investigator would ask:
+**Important framing correction.** Earlier drafts of this document claimed that auditors or Part 108 reviewers can "cross-reference flight records against the FAA Remote ID database." **The FAA does not expose a public flight-history database for this purpose.** The public-facing FAA UAS infrastructure covers:
+
+- **DOC (Declaration of Compliance) database** — equipment declarations by manufacturers of Remote-ID broadcast modules and Standard Remote ID UAS. Not a flight-record ledger.
+- **DiSCVR** — a compliance and enforcement tool accessible to authorised law enforcement only. Not a routine operator- or auditor-facing system.
+
+Remote ID is therefore a **real-time compliance broadcast**, not a post-hoc lookup. What it actually provides:
+
+- During flight: any Remote ID receiver within RF range (FAA-operated infrastructure, cooperative third-party listeners, amateur observers, law enforcement) can log the broadcast independently.
+- After flight: **no routine public flight-history query**. Law enforcement investigating a specific incident may request DiSCVR correlation.
+- The strongest honest claim is: "If a flight happened and a receiver was in range, an independent record may exist." Not "the FAA has a database of every flight."
+
+The four operator-controlled mechanisms (signatures, chain, anchor, off-site backup) answer most audit questions; Remote ID's role is narrower than prior drafts of this document implied.
+
+Together these mechanisms answer:
 
 - **"Who recorded this?"** — Ed25519 signature traces to a specific bridge instance with a registered key fingerprint.
 - **"Were any records deleted or altered?"** — The hash chain is intact (verifiable by the standalone tool).
-- **"When was this recorded?"** — The OpenTimestamps proof is independently verifiable and immutable. This cannot be backdated or forged.
+- **"When was this recorded?"** — The OpenTimestamps proof is independently verifiable and immutable. Cannot be backdated or forged.
 - **"Where is the backup?"** — Litestream continuously replicates to S3 with Object Lock retention. Even if the local database is destroyed, the replica exists.
-- **"Did this flight actually happen?"** — FAA Remote ID independently recorded the aircraft's position broadcasts. Cross-reference the compliance record's GPS track against the FAA Remote ID database.
+- **"Did this flight actually happen?"** — The four self-contained mechanisms above show the operator's own record. **Contemporaneous Remote ID broadcast** may be independently corroborated by a third-party receiver that happened to be in range, or (in a law-enforcement context) via DiSCVR. There is no routine operator-accessible lookup.
 
-**What this system cannot prove:** That the operator did not fabricate records using modified bridge code. A modified bridge could write false records with valid signatures and timestamp them via OpenTimestamps. This is the fundamental limitation of any self-hosted compliance system. The mitigation is Remote ID cross-referencing: fabricated flights have no corresponding Remote ID track. See `docs/threat-model.md` Section 12 for the complete integrity analysis.
+**What this system cannot prove:** That the operator did not fabricate records using modified bridge code. A modified bridge could write false records with valid signatures and timestamp them via OpenTimestamps. This is the fundamental limitation of any self-hosted compliance system. The partial mitigation is Remote ID contemporaneity: a fabricated flight has no corresponding RF broadcast, so *if* a third-party receiver was in range *and* logged the period, the discrepancy shows up — but this is opportunistic corroboration, not a guaranteed backstop. See `docs/threat-model.md` Section 12 for the complete integrity analysis.
 
 **Record types:**
 

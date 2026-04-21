@@ -534,7 +534,7 @@
 - **With Litestream to immutable storage:** The operator cannot delete the replica. They can delete the local DB, but the full history exists in the immutable replica. The FAA (or an investigator) can reconstruct the chain from the replica.
   - **Gap:** The operator could claim "the system malfunctioned and I lost the data" -- but the immutable replica contradicts this claim.
 
-- **Remote ID correlation:** During any flight, the FAA receives Remote ID position broadcasts. These are stored in the FAA's systems and are independent of the operator's compliance recorder. If the operator deletes their compliance records for a specific flight, the FAA's Remote ID data still shows the flight occurred.
+- **Remote ID correlation (contemporaneous only, not a routine lookup):** During flight, the aircraft broadcasts Remote ID. Any receiver in RF range — FAA infrastructure, cooperative third-party listeners, or (in a law-enforcement context) DiSCVR — can log the broadcast independently of the operator's compliance recorder. **The FAA does not expose a public flight-history database that routine auditors can query**; DiSCVR is restricted to authorised law enforcement, and the FAA's public DOC system covers equipment declarations rather than flight records. So Remote ID is a possible law-enforcement corroboration path and opportunistic third-party evidence, not a routine audit lookup.
 
 ### 3.3 Can an Attacker Corrupt the Compliance Database?
 
@@ -981,7 +981,7 @@ The resolution proposes an 11-layer integrity chain (Section 9.5). This is the m
 - **Suggested hardening:**
   1. **Document the AWS account closure loophole.** Make clear that S3 Object Lock protects against object-level deletion but not account-level destruction.
   2. **For maximum integrity, replicate to a target the operator does not control.** The original threat model Section 3.2 recommended this: "a third-party compliance escrow service, or a shared S3 bucket managed by an insurance company." The resolutions did not adopt this recommendation. It remains the strongest available mitigation.
-  3. **Remote ID correlation is the true backstop.** For any flight that actually occurred, the FAA's Remote ID infrastructure has an independent record. This cannot be deleted by the operator. The compliance chain is most useful for proving what the system's safety posture was during the flight (DAA active, FC on duty, weather within envelope), not for proving the flight occurred. Remote ID proves the flight occurred.
+  3. **Remote ID correlation is a narrower backstop than earlier drafts claimed.** During a flight, the aircraft broadcasts Remote ID; receivers in RF range (FAA infrastructure, cooperative third-party listeners, DiSCVR for law enforcement) may log the broadcast. **The FAA does not expose a public flight-history database that routine auditors can query after the fact.** So Remote ID is opportunistic third-party evidence plus a possible law-enforcement corroboration path — not a guaranteed post-hoc lookup. The compliance chain is most useful for proving what the system's safety posture was during the flight (DAA active, FC on duty, weather within envelope); Remote ID may corroborate *contemporaneously* that a flight occurred, but only if a receiver was in range and logged it, or if a law-enforcement inquiry triggers DiSCVR access.
 
 #### 10.1.6 Attack: Defeating the Daily Heartbeat
 
@@ -1005,9 +1005,9 @@ The resolution proposes an 11-layer integrity chain (Section 9.5). This is the m
 - **Attack scenario:** Operator compiles a custom SITL build with their real FC's board UID hardcoded. They run fabricated missions through this SITL instance. The bridge detects no difference from a real flight. Records are signed and hash-chained normally.
 - **Severity of the gap:** Medium. Requires the operator to compile a custom ArduPilot SITL build with modified identifiers. This is nontrivial but within reach of a technically competent operator (ArduPilot is open source, building SITL is documented). The attack requires ~2-4 hours of effort for someone familiar with ArduPilot development.
 - **Suggested hardening:**
-  1. **Cross-reference with Remote ID.** Every real flight produces Remote ID broadcasts that the FAA receives. A SITL "flight" produces no Remote ID broadcasts. For any flight in the compliance database, the FAA can check whether a corresponding Remote ID track exists. This is the strongest available detection mechanism and is already noted in the resolution (Layer 10) but should be emphasized as THE primary defense against SITL fabrication.
+  1. **Remote ID contemporaneity (partial detection).** A real flight broadcasts Remote ID; a SITL "flight" does not. If a Remote ID receiver was in range during the claimed flight window and no broadcast was logged, that is evidence of fabrication. **Caveat: there is no public FAA flight-history database that an auditor can routinely query.** Receiver coverage in the deployment area is opportunistic unless the operator or a cooperative third party has actively deployed listeners. For law-enforcement reviews, DiSCVR can be consulted. This partially weakens SITL fabrication but does not prevent it generally.
   2. **Hardware attestation from the FC.** If the Pixhawk supports secure boot or has a hardware unique device identifier that SITL cannot replicate, log it. However, Pixhawk 6C does not have a TPM or secure boot, so this is limited to the STM32 UID, which SITL can spoof at the source code level.
-  3. **Accept that SITL fabrication cannot be prevented by software alone.** Document that Remote ID correlation is the required verification mechanism for any Part 108 application review.
+  3. **Accept that SITL fabrication cannot be prevented by software alone, and that Remote ID is not a guaranteed post-hoc lookup.** Document that Remote ID correlation is a *possible* verification path — via cooperating third-party receivers or DiSCVR for law enforcement — not a routine Part 108-review mechanism. The compliance chain's stronger claim is about safety posture (what gates passed, what telemetry was seen), not about provably-real flight existence.
 
 ### 10.2 MAVLink v2 Signing
 
@@ -1088,7 +1088,7 @@ The resolution proposes an 11-layer integrity chain (Section 9.5). This is the m
 - **Suggested hardening:**
   1. **Provide a standalone, independently downloadable verification tool.** This tool should be simple to run (single binary, no dependencies) and produce a clear PASS/FAIL with details. The FAA or any auditor should be able to verify without installing the full drone_hass stack.
   2. **The export format should include the raw public key** so an auditor can verify signatures without needing access to the bridge's filesystem.
-  3. **Document what an auditor should check** in a simple, non-technical guide: (a) run verify_chain, (b) compare key fingerprint against the operator's registered fingerprint, (c) check S3 Object Lock retention policy, (d) cross-reference flight records against FAA Remote ID database.
+  3. **Document what an auditor should check** in a simple, non-technical guide: (a) run verify_chain, (b) compare key fingerprint against the operator's registered fingerprint, (c) check S3 Object Lock retention policy, (d) for law-enforcement / incident-investigation contexts, request DiSCVR correlation of Remote ID broadcasts. **Do not document this as an FAA-provided public flight-history lookup** — the FAA does not expose one; DiSCVR is restricted to authorised law enforcement, and the FAA's public DOC system covers equipment declarations, not flight records.
   4. **Consider publishing chain head hashes to a public, timestamped ledger** (RFC 3161 TSA, or a transparency log similar to Certificate Transparency). This creates an independent, operator-uncontrollable proof that the chain existed at a specific time with a specific state. This is the strongest technical mitigation against retroactive chain fabrication.
 
 #### 10.4.2 Minimum Skill Level to Defeat the Compliance Chain
@@ -1101,12 +1101,12 @@ The resolution proposes an 11-layer integrity chain (Section 9.5). This is the m
 | Delete local DB (no Litestream) | Novice (rm command) | 1 minute | Obvious (no DB) |
 | Delete local DB + S3 replica (no Object Lock) | Intermediate (AWS CLI) | 5 minutes | Detectable (S3 access logs) |
 | Delete local DB, S3 Object Lock active | Impossible during retention | N/A | N/A |
-| Fabricate records via modified bridge | Advanced (Python, understands schema) | 4-8 hours | Undetectable without Remote ID cross-reference |
-| Fabricate records + spoof SITL detection | Expert (compile custom ArduPilot SITL) | 8-16 hours | Undetectable without Remote ID cross-reference |
+| Fabricate records via modified bridge | Advanced (Python, understands schema) | 4-8 hours | Partially detectable only if an independent Remote ID receiver was in range and logged (or not) the claimed flight window |
+| Fabricate records + spoof SITL detection | Expert (compile custom ArduPilot SITL) | 8-16 hours | Same — only contemporaneous Remote ID logging by a third party (or DiSCVR for law enforcement) provides independent corroboration |
 | Close AWS account to destroy S3 data | Novice (web UI) | 5 minutes | Detectable (90-day grace period, AWS CloudTrail) |
 
-- **Key insight:** The fabrication attack (modified bridge) is the most dangerous because it is undetectable by the system itself. Only external correlation (Remote ID, which is controlled by the FAA, not the operator) can detect it. This makes Remote ID cross-referencing the single most important verification mechanism for a Part 108 application review.
-- **Suggested hardening:** The project documentation should explicitly state: "For Part 108 application review, the FAA should cross-reference compliance flight records against the FAA Remote ID database. Any flight in the compliance database that does not have a corresponding Remote ID track should be flagged for investigation."
+- **Key insight:** The fabrication attack (modified bridge) is the most dangerous because it is undetectable by the system itself. External correlation via Remote ID is an *opportunistic* backstop: it works only if a receiver was in range during the claimed flight and logged (or failed to log) the broadcast. **There is no public FAA flight-history database that provides a guaranteed post-hoc lookup.** For incident investigations, law-enforcement DiSCVR access is a path, but not a routine Part-108-review mechanism.
+- **Suggested hardening:** Project documentation should state honestly: "Contemporaneous Remote ID broadcasts can corroborate flights if a receiver was in range, and law-enforcement DiSCVR can corroborate in the context of a specific inquiry. The FAA does not publish a general flight-history database for operator self-audit or routine auditor cross-reference. The compliance chain's strongest claim is about the operator's recorded safety posture; the chain cannot alone prove that a claimed flight occurred, and neither can Remote ID in a purely retrospective, non-law-enforcement context."
 
 #### 10.4.3 The "Open-Source Code is Auditable" Argument
 
@@ -1116,7 +1116,7 @@ The resolution proposes an 11-layer integrity chain (Section 9.5). This is the m
   2. **Even if the code is auditable, no one audits it.** The FAA does not have the staff or expertise to review Python code for every Part 108 applicant's drone system.
   3. **The audit surface is large.** The bridge codebase, plus MAVSDK-Python, plus aiomqtt, plus grpcio, plus the compliance recorder, plus Litestream -- auditing all of this for correctness is a significant undertaking.
 - **Severity of the gap:** Medium. The argument is not wrong -- open source IS more auditable than closed source. But "auditable" is not "audited." The argument provides defense-in-depth, not a security guarantee.
-- **Suggested hardening:** Do not rely on this argument as a primary control. Treat it as a supporting factor. The primary controls should be: (a) S3 Object Lock for immutability, (b) Remote ID for independent corroboration, (c) reproducible builds for code integrity verification. The "open-source is auditable" argument is a nice-to-have, not a load-bearing defense.
+- **Suggested hardening:** Do not rely on this argument as a primary control. Treat it as a supporting factor. The primary controls should be: (a) S3 Object Lock for immutability, (b) Remote ID as a contemporaneous broadcast (with the honest caveat that the FAA provides no public flight-history lookup — only DiSCVR for law enforcement and opportunistic third-party receivers), (c) reproducible builds for code integrity verification. The "open-source is auditable" argument is a nice-to-have, not a load-bearing defense.
 
 ### 10.5 Network Isolation
 
@@ -1205,8 +1205,8 @@ All 13 gaps reviewed by both domain experts. Consensus reached on all items.
 **Status: Accept as residual risk with mitigations.**
 - Inject container image digest at build time via Dockerfile `ARG`/`LABEL` (not `/proc/self/cgroup`). Bridge logs its own image digest as a compliance record at startup.
 - Auditors can verify digest matches a published, reproducible release.
-- **Remote ID cross-referencing is THE primary verification for Part 108 reviews**, not the compliance chain. The chain proves safety posture (DAA active, personnel authorized); Remote ID proves flights occurred.
-- Document this framing explicitly in the compliance export and auditor guide.
+- **Remote ID contemporaneous broadcast is the strongest independent signal available**, but it is not a routine post-hoc FAA lookup — the FAA does not publish a flight-history database; DiSCVR is restricted to authorised law enforcement. The compliance chain proves the operator's recorded safety posture (DAA active, personnel authorised); Remote ID may corroborate *if* a receiver was in range during the flight, or via law-enforcement DiSCVR in an investigation context.
+- Document this framing honestly in the compliance export and auditor guide — prior drafts overstated FAA Remote ID as a routine audit lookup.
 
 ### GAP-02: Key Fingerprint Registration Depends on S3 Object Lock
 **Status: Adopted.**
@@ -1231,9 +1231,9 @@ All 13 gaps reviewed by both domain experts. Consensus reached on all items.
 ### GAP-05: AWS Account Closure Destroys S3 Data
 **Status: Accept as residual risk.**
 - 90-day grace period gives investigators time for preservation orders.
-- Remote ID provides independent, operator-uncontrollable flight records.
+- Remote ID contemporaneous broadcast exists during every flight; any receiver in RF range may log it independently. (Caveat: the FAA does not publish a flight-history database for routine auditor use; DiSCVR is law-enforcement only.)
 - AWS CloudTrail logs account closure events.
-- If the FAA knows the operator's bucket ARN (from Permit application) and the bucket disappears, that is itself evidence of tampering.
+- If the FAA or investigators know the operator's bucket ARN (from Permit application) and the bucket disappears, that is itself evidence of tampering.
 - Third-party compliance escrow is out of scope for a residential system.
 
 ### GAP-06: Daily Heartbeat Self-Referential
@@ -1247,8 +1247,8 @@ All 13 gaps reviewed by both domain experts. Consensus reached on all items.
 **Status: Adopted (document honestly).**
 - Existing SITL detection (UID, firmware string, GPS) remains as a low-bar check against accidental SITL-in-production.
 - It is NOT a security boundary — a competent operator can compile custom SITL with spoofed UIDs.
-- **Remote ID cross-referencing is the only reliable detection for fabricated flights.** Document this explicitly.
-- Compliance export format should include enough data (timestamps, GPS tracks, aircraft serial) for efficient FAA cross-referencing against the Remote ID database.
+- **Remote ID contemporaneity is the strongest available detection for fabricated flights**, but it is opportunistic (depends on receiver coverage during the claimed flight) and post-hoc access is restricted (DiSCVR law-enforcement only; no public FAA flight-history database). Document this honestly.
+- Compliance export format should include enough data (timestamps, GPS tracks, aircraft serial) that, *if* Remote ID broadcast logs are obtained via an available path (cooperative receiver logs, law-enforcement DiSCVR access), cross-reference is efficient.
 
 ### GAP-08: MQTT ACL Not Enforced by Software
 **Status: Adopted (startup probe).**
@@ -1271,7 +1271,7 @@ All 13 gaps reviewed by both domain experts. Consensus reached on all items.
 - Input: compliance database export (JSON) + public key file.
 - Output: detailed PASS/FAIL report with record counts, timestamp range, signature verification, and chain integrity.
 - Public key is embedded in the export format so auditors need only the export file.
-- Write a 2-page plain-language auditor guide: (a) run verify tool, (b) compare key fingerprint, (c) check S3 Object Lock, (d) cross-reference flights against FAA Remote ID database.
+- Write a 2-page plain-language auditor guide: (a) run verify tool, (b) compare key fingerprint, (c) check S3 Object Lock, (d) for law-enforcement / incident-investigation contexts only, request Remote ID corroboration via DiSCVR. **Do not document a routine "cross-reference against FAA Remote ID database" step — the FAA does not expose one.**
 - Daily heartbeat includes RFC 3161 timestamp token (GAP-06) providing independent time proof.
 
 ### GAP-11: "Open-Source is Auditable" Overstated
@@ -1298,7 +1298,7 @@ All 13 gaps reviewed by both domain experts. Consensus reached on all items.
 
 ## 12. Updated Compliance Data Integrity Model
 
-Five independent mechanisms, each proving a different property, each controlled by a different entity:
+**Correction from earlier drafts.** Prior versions of this document framed the integrity model as "five independent mechanisms" and claimed that FAA Remote ID provides a post-hoc lookup proving "the flight actually occurred." This overstated what the FAA actually exposes. The corrected framing is: **four operator- and infrastructure-controlled mechanisms, plus one contemporaneous broadcast (Remote ID) that is NOT a routine lookup.**
 
 | Mechanism | What it proves | Who controls it |
 |-----------|---------------|-----------------|
@@ -1306,15 +1306,25 @@ Five independent mechanisms, each proving a different property, each controlled 
 | **SHA-256 hash chain** | No records were removed or altered | The bridge (operator's system) |
 | **OpenTimestamps** | When the record was written | Decentralized (no one controls it) |
 | **Litestream + S3 Object Lock** | Records exist off-device, queryable backup | Operator's cloud account (deletion-proof during retention) |
-| **FAA Remote ID** | The flight actually occurred | The FAA (operator cannot alter or delete) |
+| **Remote ID broadcast** *(contemporaneous only, not a routine post-hoc lookup)* | During flight the aircraft broadcasts position/ID; any RF-range receiver may log it independently | FAA network + cooperative third-party listeners + law-enforcement DiSCVR |
 
-Together, these answer every question a Part 108 reviewer or incident investigator would ask:
+**Important scope clarification.** The FAA's public-facing UAS infrastructure covers:
+- **DOC (Declaration of Compliance) database** — manufacturer equipment declarations. Not a flight-record ledger.
+- **DiSCVR** — compliance / enforcement tool for authorised law enforcement only. Not routine auditor-facing.
+
+**The FAA does not expose a public flight-history database.** Earlier drafts of this document implied Part 108 reviewers could "cross-reference the compliance record's GPS track against the FAA Remote ID database." That is not a mechanism that exists as described. The honest description is:
+
+- During flight: Remote ID broadcast happens. Receivers in range (FAA infrastructure, cooperative third-party listeners, amateur observers, law enforcement) may log it.
+- After flight, for routine operator or auditor review: **no public FAA lookup.** Any corroboration depends on a third-party receiver having been in range and logging the broadcast.
+- After flight, for law-enforcement investigation: DiSCVR allows authorised personnel to query Remote ID data.
+
+Together, the four operator- and infrastructure-controlled mechanisms answer most audit questions; Remote ID's role is opportunistic / enforcement-context, not routine.
 
 - **"Who recorded this?"** — Ed25519 signature traces to a specific bridge instance with a registered key fingerprint.
 - **"Were any records deleted or altered?"** — The hash chain is intact (verifiable by the standalone tool).
 - **"When was this recorded?"** — The OpenTimestamps proof is independently verifiable and immutable. Cannot be backdated, forged, or deleted by any party.
 - **"Where is the backup?"** — Litestream continuously replicates to S3 with Object Lock retention.
-- **"Did this flight actually happen?"** — FAA Remote ID independently recorded the aircraft's position broadcasts.
+- **"Did this flight actually happen?"** — The four mechanisms above prove the operator *recorded* the flight. Contemporaneous Remote ID broadcast may be independently corroborated if a third-party receiver was in range during the flight, or via law-enforcement DiSCVR in an investigation. There is no FAA-provided routine lookup.
 
 ### Supporting layers (defense in depth)
 
@@ -1330,7 +1340,7 @@ Together, these answer every question a Part 108 reviewer or incident investigat
 | Reproducible builds with image digest logging | GAP-01/11: partial (supports, not primary) |
 | Bridge startup self-checks (MQTT auth, network, Litestream) | GAP-08/09: resolved |
 
-**What this system cannot prove:** That the operator did not fabricate records using modified bridge code. A modified bridge could write false records with valid signatures and timestamp them via OpenTimestamps. This is the fundamental limitation of any self-hosted compliance system. The mitigation is Remote ID cross-referencing: fabricated flights have no corresponding Remote ID track in the FAA database.
+**What this system cannot prove:** That the operator did not fabricate records using modified bridge code. A modified bridge could write false records with valid signatures and timestamp them via OpenTimestamps. This is the fundamental limitation of any self-hosted compliance system. The partial mitigation is contemporaneous Remote ID broadcast — a fabricated flight produces no RF broadcast, so if a cooperative receiver was in range and logged the period, the discrepancy shows up. For law-enforcement investigations, DiSCVR can corroborate. **The FAA does not provide a general post-hoc flight-history lookup** — prior drafts of this document implied one existed; it does not.
 
 ---
 

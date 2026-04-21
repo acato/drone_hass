@@ -260,7 +260,7 @@ A claim at Level 2 (e.g., "our compliance chain is audit-grade") must be backed 
 ## 10. Open Questions
 
 - How should `regulatory/_core/` and `regulatory/sora/` handle risk-matrix differences between SORA and FAA Part 108 population categories cleanly? Likely a separate `regulatory/risk/` layer; to be sorted at Phase 2.
-- Where should C-class marking (EU 2019/945) sit in the model? It's Level 4 regulation but the *evidence for a class-marked aircraft* is hardware. Currently an accepted one-way-door (closed for self-built ArduPilot); revisit if/when the project gains a certified-drone pathway.
+- Where should C-class marking (EU 2019/945) sit in the model? It's Level 4 regulation but the *evidence for a class-marked aircraft* is hardware. An accepted one-way-door for **STS** (closed for self-built ArduPilot); **PDRA-S01/S-02 remain open** since they do not require C-class marking. Revisit if/when the project gains a certified-drone pathway and wants to access STS specifically.
 - Should LUC governance (foundation / cooperative / umbrella) get its own doc or stay a note in `regulatory-eu.md §8.2`?
 - When does the UK diverge enough from the EU to justify `uk/_base/` rather than an `uk/` wrapper over `eu/_base/`? Monitor annually.
 

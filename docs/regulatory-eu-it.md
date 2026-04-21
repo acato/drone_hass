@@ -89,7 +89,17 @@ A 1-acre property is ~64 m × 64 m square. At 50 m AGL the south GRB alone consu
 
 ---
 
-## 4. SORA Assessment — SAIL II
+## 4. Specific-Category Path Selection
+
+**Evaluate PDRA-S02 first, then fall back to full SORA.** Prior versions of this document walked directly to full SORA claiming STS/PDRA were both blocked by lack of C-class marking. That was a doctrinal error — corrected in [`regulatory-eu.md §4.3`](regulatory-eu.md). STS requires C5/C6 marking; **PDRA-S01/S-02 do not**.
+
+**PDRA-S02** covers BVLOS with airspace observers over a controlled ground area, sparsely populated environment, ≤4 kg MTOM. Lavagna's geometry (orchards E/W, 91 m setback N, public road S) plausibly qualifies as "sparsely populated" for PDRA-S02 purposes with the same mitigations we'd bring to a SORA. An airspace observer is a human role — for the perimeter-patrol use case this is the RPIC or a designated observer on-site during flight windows, which fits the stepping-stone operational model.
+
+**Verify with ENAC at pre-consultation** whether PDRA-S02 is accepted for Article-14 privately-built UAS under ENAC's current interpretation. EASA AMC1 does not condition PDRA on C-class marking; some national CAAs have interpreted PDRA eligibility more narrowly in practice. This is a verify-before-relying item.
+
+**Full SORA remains the documented fallback** and the rest of §4 and §5 walk through it. If PDRA-S02 is accepted, most of the SORA methodology still applies (ConOps, OSO evidence, ERP, etc.) but without the full 10-step risk assessment — the operator files a compliance statement against the PDRA rather than constructing an iGRC/SAIL derivation from scratch. ENAC timeline and fees for PDRA-declarations are typically **lighter than full SORA** (weeks rather than months; fees in the low hundreds of euros rather than €400–800).
+
+## 4.a SORA Assessment — SAIL II (fallback, if PDRA-S02 is not accepted)
 
 ### 4.1 Ground Risk
 
@@ -195,15 +205,21 @@ GDPR Art. 2(2)(c) excludes "purely personal or household activity." Italian Gara
 
 The landowner becomes a **data controller**.
 
-### 6.2 Videosorveglianza guidance
+### 6.2 Videosorveglianza guidance — DPIA working assumption, not drone-specific law
 
-Garante's *Provvedimento 11 ottobre 2018* on videosorveglianza sets retention defaults:
+Garante's *Provvedimento 11 ottobre 2018* on videosorveglianza sets retention defaults **for fixed CCTV**:
 
 - **24 hours** default for routine surveillance.
 - **Max 7 days** without specific justification.
 - Longer retention only for incident-linked footage.
 
-Extending to drones, the expectation is that routine perimeter-patrol footage is retained 24–72 h unless promoted via incident linkage.
+**Important framing:** this is CCTV guidance, not a drone-specific published rule. **The retention windows used throughout this document (24–72 h default, 30–90 d for privileged footage, etc.) are DPIA working assumptions derived by analogy from the videosorveglianza guidance — they are not settled drone-specific law.** The Garante has aggressive enforcement when triggered but has issued limited drone-specific published guidance; any deployment must treat these numbers as a starting posture subject to:
+
+- **Italian counsel review** against current Garante practice and any drone-relevant decisions issued after this document's date.
+- **Pre-deployment DPIA** that justifies the selected retention windows against this project's specific operation profile.
+- **Possible Garante pre-consultation** (GDPR Art. 36) if residual risk after mitigations is assessed as high.
+
+Extending CCTV practice to drones is a reasonable starting position but is **not the same as drone-specific published rule**. Operators should not treat the numbers as safe defaults; they are defensible starting points for a counsel-reviewed DPIA.
 
 ### 6.3 Refined-site posture (Lavagna)
 
